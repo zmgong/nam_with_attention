@@ -10,9 +10,8 @@ from tqdm.autonotebook import tqdm
 
 from nam.config import Config
 from nam.models.saver import Checkpointer
-from nam.trainer.losses import penalized_loss
-from nam.trainer.metrics import accuracy
-from nam.trainer.metrics import mae
+from nam.trainer.losses import penalized_loss, mse_loss
+from nam.trainer.metrics import roc_auc
 from nam.utils.loggers import TensorBoardLogger
 
 
@@ -32,8 +31,8 @@ class Trainer:
         self.criterion = lambda inputs, targets, weights, fnns_out, model: penalized_loss(
             self.config, inputs, targets, weights, fnns_out, model)
 
-        self.metrics = lambda logits, targets: mae(logits, targets) if config.regression else accuracy(logits, targets)
-        self.metrics_name = "MAE" if config.regression else "Accuracy"
+        self.metrics = lambda logits, targets: mse_loss(logits, targets) if config.regression else roc_auc(logits, targets)
+        self.metrics_name = 'MSE' if config.regression else 'ROCAUC'
 
         if config.wandb:
             wandb.watch(models=self.model, log='all', log_freq=10)
@@ -160,4 +159,4 @@ class Trainer:
                 })
 
                 # Updates progress bar description.
-                pbar_epoch.set_description("Test Loss: {:.2f} ".format(loss_test.detach().cpu().numpy().item()))
+                pbar_epoch.set_description(f"Test {self.metrics_name}_test_epoch: {metrics_test:.3f}")
