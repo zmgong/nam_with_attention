@@ -14,7 +14,6 @@ from nam.trainer.losses import penalized_loss
 from nam.trainer.metrics import accuracy
 from nam.trainer.metrics import mae
 from nam.utils.loggers import TensorBoardLogger
-from ray import tune
 
 
 class Trainer:
@@ -141,8 +140,6 @@ class Trainer:
                 if epoch % self.config.save_model_frequency == 0:
                     self.checkpointer.save(epoch)
 
-                tune.report(loss=loss_val,)
-
                 # Updates progress bar description.
                 pbar_epoch.set_description(f"""Epoch({epoch}):
             TL: {loss_train.detach().cpu().numpy().item():.3f} |
@@ -157,7 +154,6 @@ class Trainer:
 
                 # Evaluates model on whole validation dataset, and writes on `TensorBoard`.
                 loss_test, metrics_test = self.evaluate_epoch(self.model, self.dataloader_test)
-                # tune.report(loss_test=loss_test.detach().cpu().numpy().item())
                 self.writer.write({
                     "loss_test_epoch": loss_test.detach().cpu().numpy().item(),
                     f"{self.metrics_name}_test_epoch": metrics_test,
