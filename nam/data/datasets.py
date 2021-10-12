@@ -109,3 +109,28 @@ def load_gallup_data(config=cfg,
                           features_columns=features_columns,
                           targets_column=targets_column,
                           weights_column=weights_column)
+
+
+def load_compas_data(
+    config,
+    path: str = '~/nam/data/compas/recid.data',
+    features_columns: list = [
+        "age", "race", "sex", "priors_count", "length_of_stay", "c_charge_degree"
+    ],
+    targets_columns: str = ["two_year_recid"],
+) -> Dict:
+  dataset = pd.read_csv(path, delimiter=' ', header=None)
+  dataset.columns = features_columns + targets_columns
+
+  config.regression = False
+
+  if config.cross_val:
+      return FoldedDataset(config,
+                              data_path=dataset,
+                              features_columns=dataset.columns[:-1],
+                              targets_column=dataset.columns[-1])
+  else:
+      return NAMDataset(config,
+                          data_path=dataset,
+                          features_columns=dataset.columns[:-1],
+                          targets_column=dataset.columns[-1])
