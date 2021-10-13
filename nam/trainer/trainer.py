@@ -2,6 +2,7 @@ from types import SimpleNamespace
 from typing import Mapping
 from typing import Sequence
 
+from ignite.contrib.metrics import ROC_AUC
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -11,7 +12,6 @@ from tqdm.autonotebook import tqdm
 from nam.config import Config
 from nam.models.saver import Checkpointer
 from nam.trainer.losses import penalized_loss, mse_loss
-from nam.trainer.metrics import roc_auc
 from nam.utils.loggers import TensorBoardLogger
 
 
@@ -31,8 +31,10 @@ class Trainer:
         self.criterion = lambda inputs, targets, weights, fnns_out, model: penalized_loss(
             self.config, inputs, targets, weights, fnns_out, model)
 
-        self.metrics = lambda logits, targets: mse_loss(logits, targets) if config.regression else roc_auc(logits, targets)
-        self.metrics_name = 'MSE' if config.regression else 'ROCAUC'
+        output_transform_fn = lambda output: (torch.sigmoid(output[0]), output[1])
+        self.metric_train = ROC_AUC(output_transform_fn)
+        self.metric_val = ROC_AUC(output_transform_fn)
+        self.metric_name = 'AUROC'
 
         if config.wandb:
             wandb.watch(models=self.model, log='all', log_freq=10)
@@ -52,7 +54,7 @@ class Trainer:
         predictions, fnn_out = self.model(features)
 
         loss = self.criterion(predictions, targets, None, fnn_out, self.model)
-        metrics = self.metrics(predictions, targets)
+        self.metric_train.update((predictions, targets))
 
         # Backward pass.
         loss.backward()
@@ -60,7 +62,7 @@ class Trainer:
         # Performs a gradient descent step.
         self.optimizer.step()
 
-        return loss, metrics
+        return loss
 
     def train_epoch(self, model: nn.Module, optimizer: optim.Optimizer,
                     dataloader: torch.utils.data.DataLoader) -> torch.Tensor:
@@ -68,22 +70,19 @@ class Trainer:
         `dataloader`."""
         model.train()
         loss = 0.0
-        metrics = 0.0
         with tqdm(dataloader, leave=False) as pbar:
             for batch in pbar:
-
                 # Performs a gradient-descent step.
-                step_loss, step_metrics = self.train_step(model, optimizer, batch)
+                step_loss = self.train_step(model, optimizer, batch)
                 loss += step_loss
-                metrics += step_metrics
 
-                pbar.set_description(f"TL Step: {step_loss:.3f} | {self.metrics_name}: {step_metrics:.3f}")
+        metric = self.metric_train.compute()
+        self.metric_train.reset()
 
-        return loss / len(dataloader), metrics / len(dataloader)
+        return loss / len(dataloader), metric
 
     def evaluate_step(self, model: nn.Module, batch: Mapping[str, torch.Tensor]) -> torch.Tensor:
         """Evaluates `model` on a `batch`."""
-
         features, targets = batch
 
         # Forward pass from the model.
@@ -91,48 +90,44 @@ class Trainer:
 
         # Calculates loss on mini-batch.
         loss = self.criterion(predictions, targets, None, fnn_out, self.model)
-        metrics = self.metrics(predictions, targets)
+        self.metric_val.update((predictions, targets))
 
-        # self.writer.write({"val_loss_step": loss.detach().cpu().numpy().item()})
-
-        return loss, metrics
+        return loss
 
     def evaluate_epoch(self, model: nn.Module, dataloader: torch.utils.data.DataLoader) -> torch.Tensor:
-        """Performs an evaluation of the `model` on the `dataloader."""
+        """Performs an evaluation of the `model` on the `dataloader`."""
         model.eval()
         loss = 0.0
-        metrics = 0.0
         with tqdm(dataloader, leave=False) as pbar:
             for batch in pbar:
                 # Accumulates loss in dataset.
                 with torch.no_grad():
-                    # step_loss = self.evaluate_step(model, batch, pbar)
-                    # loss += self.evaluate_step(model, batch, pbar)
-                    step_loss, step_metrics = self.evaluate_step(model, batch)
+                    step_loss = self.evaluate_step(model, batch)
                     loss += step_loss
-                    metrics += step_metrics
 
-                    pbar.set_description((f"VL Step: {step_loss:.3f} | {self.metrics_name}: {step_metrics:.3f}"))
+        metric = self.metric_val.compute()
+        self.metric_val.reset()
 
-        return loss / len(dataloader), metrics / len(dataloader)
+        return loss / len(dataloader), metric
 
     def train(self):
+        """Train the model for a specified number of epochs."""
         num_epochs = self.config.num_epochs
 
         with tqdm(range(num_epochs)) as pbar_epoch:
             for epoch in pbar_epoch:
                 # Trains model on whole training dataset, and writes on `TensorBoard`.
-                loss_train, metrics_train = self.train_epoch(self.model, self.optimizer, self.dataloader_train)
+                loss_train, metric_train = self.train_epoch(self.model, self.optimizer, self.dataloader_train)
                 self.writer.write({
                     "loss_train_epoch": loss_train.detach().cpu().numpy().item(),
-                    f"{self.metrics_name}_train_epoch": metrics_train,
+                    f"{self.metric_name}_train_epoch": metric_train,
                 })
 
                 # Evaluates model on whole validation dataset, and writes on `TensorBoard`.
                 loss_val, metrics_val = self.evaluate_epoch(self.model, self.dataloader_val)
                 self.writer.write({
                     "loss_val_epoch": loss_val.detach().cpu().numpy().item(),
-                    f"{self.metrics_name}_val_epoch": metrics_val,
+                    f"{self.metric_name}_val_epoch": metrics_val,
                 })
 
                 # Checkpoints model weights.
@@ -141,22 +136,24 @@ class Trainer:
 
                 # Updates progress bar description.
                 pbar_epoch.set_description(f"""Epoch({epoch}):
-            TL: {loss_train.detach().cpu().numpy().item():.3f} |
-            VL: {loss_val.detach().cpu().numpy().item():.3f} |
-            {self.metrics_name}: {metrics_train:.3f}""")
+                    Training Loss: {loss_train.detach().cpu().numpy().item():.3f} |
+                    Validation Loss: {loss_val.detach().cpu().numpy().item():.3f} |
+                    {self.metric_name}: {metric_train:.3f}""")
 
     def test(self):
-        num_epochs = self.config.num_epochs
+        """Evaluate the model on the test set."""
+        num_epochs = 1
 
         with tqdm(range(num_epochs)) as pbar_epoch:
             for epoch in pbar_epoch:
-
-                # Evaluates model on whole validation dataset, and writes on `TensorBoard`.
+                # Evaluates model on whole test set, and writes on `TensorBoard`.
                 loss_test, metrics_test = self.evaluate_epoch(self.model, self.dataloader_test)
                 self.writer.write({
                     "loss_test_epoch": loss_test.detach().cpu().numpy().item(),
-                    f"{self.metrics_name}_test_epoch": metrics_test,
+                    f"{self.metric_name}_test_epoch": metrics_test,
                 })
 
                 # Updates progress bar description.
-                pbar_epoch.set_description(f"Test {self.metrics_name}_test_epoch: {metrics_test:.3f}")
+                pbar_epoch.set_description(f"""Epoch({epoch}):
+                    Test Loss: {loss_test.detach().cpu().numpy().item():.3f} |
+                    Test {self.metric_name}: {metrics_test:.3f}""")
