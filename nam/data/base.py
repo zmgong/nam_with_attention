@@ -82,9 +82,9 @@ class NAMDataset(CSVDataset):
         else:
             targets = self.y
 
-        self.features = torch.from_numpy(self.features).float().to(config.device)
-        self.targets = torch.from_numpy(targets).view(-1, 1).float().to(config.device)
-        self.wgts = torch.from_numpy(self.wgts).to(config.device)
+        self.features = torch.from_numpy(self.features).float()
+        self.targets = torch.from_numpy(targets).view(-1, 1).float()
+        self.wgts = torch.from_numpy(self.wgts)
 
         self.setup_dataloaders()
 
@@ -92,7 +92,7 @@ class NAMDataset(CSVDataset):
         return len(self.features)
 
     def __getitem__(self, idx: int) -> Tuple[np.array, ...]:
-        return self.features[idx], self.targets[idx]  #, self.wgts[idx]
+        return self.features[idx].to(self.config.device), self.targets[idx].to(self.config.device)  #, self.wgts[idx]
 
     def get_col_min_max(self):
         col_min_max = {}
@@ -116,11 +116,14 @@ class NAMDataset(CSVDataset):
 
         train_subset, val_subset, test_subset = random_split(self, [train_size, val_size, test_size])
 
-        self.train_dl = DataLoader(train_subset, batch_size=self.config.batch_size, shuffle=True)
+        self.train_dl = DataLoader(train_subset, batch_size=self.config.batch_size, 
+            shuffle=True, num_workers=self.config.num_workers)
 
-        self.val_dl = DataLoader(val_subset, batch_size=self.config.batch_size, shuffle=False)
+        self.val_dl = DataLoader(val_subset, batch_size=self.config.batch_size, 
+            shuffle=False, num_workers=self.config.num_workers)
 
-        self.test_dl = DataLoader(test_subset, batch_size=self.config.batch_size, shuffle=False)
+        self.test_dl = DataLoader(test_subset, batch_size=self.config.batch_size, 
+            shuffle=False, num_workers=self.config.num_workers)
 
     def train_dataloaders(self) -> Tuple[DataLoader, ...]:
         return self.train_dl, self.val_dl
