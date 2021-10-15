@@ -92,7 +92,7 @@ class NAMDataset(CSVDataset):
         return len(self.features)
 
     def __getitem__(self, idx: int) -> Tuple[np.array, ...]:
-        return self.features[idx].to(self.config.device), self.targets[idx].to(self.config.device)  #, self.wgts[idx]
+        return self.features[idx], self.targets[idx]  #, self.wgts[idx]
 
     def get_col_min_max(self):
         col_min_max = {}

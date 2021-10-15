@@ -47,6 +47,8 @@ class Trainer:
         """Performs a single gradient-descent optimization step."""
 
         features, targets = batch
+        features = features.to(self.config.device)
+        targets = targets.to(self.config.device)
 
         # Resets optimizer's gradients.
         self.optimizer.zero_grad()
@@ -85,6 +87,8 @@ class Trainer:
     def evaluate_step(self, model: nn.Module, batch: Mapping[str, torch.Tensor]) -> torch.Tensor:
         """Evaluates `model` on a `batch`."""
         features, targets = batch
+        features = features.to(self.config.device)
+        targets = targets.to(self.config.device)
 
         # Forward pass from the model.
         predictions, fnn_out = self.model(features)
@@ -157,7 +161,6 @@ class Trainer:
                 epochs_since_best += 1
                 if self.config.patience > 0 and epochs_since_best > self.config.patience:
                     break
-                
 
     def test(self):
         """Evaluate the model on the test set."""
