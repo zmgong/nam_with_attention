@@ -27,6 +27,7 @@ class Trainer:
 
         self.writer = TensorBoardLogger(config)
         self.checkpointer = Checkpointer(model=model, config=config)
+        self.best_checkpoint = None
 
         self.criterion = lambda inputs, targets, weights, fnns_out, model: penalized_loss(
             self.config, inputs, targets, weights, fnns_out, model)
@@ -113,6 +114,8 @@ class Trainer:
     def train(self):
         """Train the model for a specified number of epochs."""
         num_epochs = self.config.num_epochs
+        best_loss = -float('inf')
+        epochs_since_best = 0
 
         with tqdm(range(num_epochs)) as pbar_epoch:
             for epoch in pbar_epoch:
@@ -124,15 +127,13 @@ class Trainer:
                 })
 
                 # Evaluates model on whole validation dataset, and writes on `TensorBoard`.
-                loss_val, metrics_val = self.evaluate_epoch(self.model, self.dataloader_val)
+                loss_val, metric_val = self.evaluate_epoch(self.model, self.dataloader_val)
                 self.writer.write({
                     "loss_val_epoch": loss_val.detach().cpu().numpy().item(),
-                    f"{self.metric_name}_val_epoch": metrics_val,
+                    f"{self.metric_name}_val_epoch": metric_val,
                 })
 
-                # Checkpoints model weights.
-                if epoch % self.config.save_model_frequency == 0:
-                    self.checkpointer.save(epoch)
+                # if self.config.patience > 0 and 
 
                 # Updates progress bar description.
                 pbar_epoch.set_description(f"""Epoch({epoch}):
@@ -140,10 +141,30 @@ class Trainer:
                     Validation Loss: {loss_val.detach().cpu().numpy().item():.3f} |
                     {self.metric_name}: {metric_train:.3f}""")
 
+                # Checkpoints model weights.
+                if self.config.save_model_frequency > 0 and epoch % self.config.save_model_frequency == 0:
+                    self.checkpointer.save(epoch)
+
+                # Save best checkpoint for early stopping
+                if self.config.patience > 0 and metric_val > best_loss:
+                    # TODO: support early stopping on both loss and metric
+                    best_loss = metric_val
+                    epochs_since_best = 0
+                    self.checkpointer.save(epoch)
+                    self.best_checkpoint = epoch
+
+                # Stop training if early stopping patience exceeded
+                epochs_since_best += 1
+                if self.config.patience > 0 and epochs_since_best > self.config.patience:
+                    break
+                
+
     def test(self):
         """Evaluate the model on the test set."""
+        if self.config.patience > 0:
+            self.model = self.checkpointer.load(self.best_checkpoint)
+        
         num_epochs = 1
-
         with tqdm(range(num_epochs)) as pbar_epoch:
             for epoch in pbar_epoch:
                 # Evaluates model on whole test set, and writes on `TensorBoard`.

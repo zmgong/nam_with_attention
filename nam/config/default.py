@@ -53,12 +53,12 @@ def defaults() -> Config:
         num_workers=16,
 
         ## saver
-        save_model_frequency=2,
+        save_model_frequency=0,
         save_top_k=3,
 
         ## Early stopping
         use_dnn=False,
-        early_stopping_patience=50,  ## For early stopping
+        patience=40,  ## For early stopping
     )
 
     return config
