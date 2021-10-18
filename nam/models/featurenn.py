@@ -60,3 +60,48 @@ class FeatureNN(Model):
         for layer in self.model:
             outputs = self.dropout(layer(outputs))
         return outputs
+
+
+class MultiFeatureNN(Model):
+    def __init__(
+        self,
+        config,
+        name,
+        *,
+        input_shape: int,
+        num_units: int,
+        feature_num: int,
+        num_subnets: int,
+        num_tasks: int
+    ) -> None:
+        """Initializes FeatureNN hyperparameters.
+        Args:
+            num_units: Number of hidden units in first hidden layer.
+            dropout: Coefficient for dropout regularization.
+            feature_num: Feature Index used for naming the hidden layers.
+        """
+        super(MultiFeatureNN, self).__init__(config, name)
+        subnets = [
+            FeatureNN(
+            config,
+            name,
+            input_shape=input_shape,
+            num_units=num_units,
+            feature_num=feature_num,
+            )
+            for i in range(num_subnets)
+        ]
+        self.feature_nns = nn.ModuleList(subnets)
+        self.linear = torch.nn.Linear(num_subnets, num_tasks)
+
+    def forward(self, inputs) -> torch.Tensor:
+        """Computes FeatureNN output with either evaluation or training mode."""
+        individual_outputs = []
+        for fnn in self.feature_nns:
+            individual_outputs.append(fnn(inputs)) 
+
+        # (batch_size, num_subnets)
+        stacked = torch.stack(individual_outputs, dim=-1)
+        # (batch_size, num_tasks)
+        weighted = self.linear(stacked)
+        return weighted

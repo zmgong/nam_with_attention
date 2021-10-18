@@ -6,7 +6,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from nam.models.base import Model
-from nam.models.featurenn import FeatureNN
+from nam.models.featurenn import FeatureNN, MultiFeatureNN
 
 
 class NAM(Model):
@@ -22,13 +22,14 @@ class NAM(Model):
         super(NAM, self).__init__(config, name)
 
         self._num_inputs = num_inputs
-        self.dropout = nn.Dropout(p=self.config.dropout)
 
         if isinstance(num_units, list):
             assert len(num_units) == num_inputs
             self._num_units = num_units
         elif isinstance(num_units, int):
             self._num_units = [num_units for _ in range(self._num_inputs)]
+
+        self.dropout = nn.Dropout(p=self.config.dropout)
 
         ## Builds the FeatureNNs on the first call.
         self.feature_nns = nn.ModuleList([
@@ -49,3 +50,69 @@ class NAM(Model):
 
         out = torch.sum(dropout_out, dim=-1)
         return out + self._bias, dropout_out
+
+
+class MultiTaskNAM(Model):
+
+    def __init__(
+        self,
+        config,
+        name,
+        *,
+        num_inputs: int,
+        num_units: int,
+        num_subnets: int,
+        num_tasks: int
+    ) -> None:
+        super(MultiTaskNAM, self).__init__(config, name)
+
+        self._num_inputs = num_inputs
+        self._num_subnets = num_subnets
+        self._num_tasks = num_tasks
+        
+        if isinstance(num_units, list):
+            assert len(num_units) == num_inputs
+            self._num_units = num_units
+        elif isinstance(num_units, int):
+            self._num_units = [num_units for _ in range(self._num_inputs)]
+
+        self.dropout = nn.Dropout(p=self.config.dropout)
+
+        ## Builds the FeatureNNs on the first call.
+        self.feature_nns = nn.Sequential()
+        for i in range(self._num_inputs):
+            self.feature_nns.add_module(
+                f'MultiFeatureNN_{i}',
+                MultiFeatureNN(
+                    config=config,
+                    name=f'MultiFeatureNN_{i}',
+                    input_shape=1,
+                    num_units=self._num_units[i],
+                    feature_num=i,
+                    num_subnets=self._num_subnets,
+                    num_tasks=self._num_tasks
+                ))
+
+        self._bias = torch.nn.Parameter(data=torch.zeros(1, self._num_tasks))
+
+    def calc_outputs(self, inputs: torch.Tensor) -> Sequence[torch.Tensor]:
+        """Returns the output computed by each feature net."""
+        return [self.feature_nns[i](inputs[:, i]) for i in range(self._num_inputs)]
+
+    def forward(
+        self,
+        inputs: torch.Tensor,
+        weights: torch.Tensor = torch.tensor(1),
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        # tuple: (batch, num_tasks) x num_inputs
+        individual_outputs = self.calc_outputs(inputs)
+        # (batch, num_tasks, num_inputs)
+        stacked_out = torch.stack(individual_outputs, dim=-1).squeeze(dim=1)
+        dropout_out = self.dropout(stacked_out)
+
+        # (batch, num_tasks)
+        summed_out = torch.sum(dropout_out, dim=2) + self._bias
+        return summed_out, dropout_out
+
+    def feature_output(self, feature_index, inputs):
+        return self.feature_nns[feature_index](inputs)

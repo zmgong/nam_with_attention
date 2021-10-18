@@ -45,7 +45,6 @@ class Trainer:
 
     def train_step(self, model: nn.Module, optimizer: optim.Optimizer, batch: torch.Tensor) -> torch.Tensor:
         """Performs a single gradient-descent optimization step."""
-
         features, targets = batch
         features = features.to(self.config.device)
         targets = targets.to(self.config.device)
@@ -136,8 +135,6 @@ class Trainer:
                     "loss_val_epoch": loss_val.detach().cpu().numpy().item(),
                     f"{self.metric_name}_val_epoch": metric_val,
                 })
-
-                # if self.config.patience > 0 and 
 
                 # Updates progress bar description.
                 pbar_epoch.set_description(f"""Epoch({epoch}):
