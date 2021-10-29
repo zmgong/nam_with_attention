@@ -9,18 +9,15 @@ from nam.models.base import Model
 from nam.models.featurenn import FeatureNN, MultiFeatureNN
 
 
-class NAM(Model):
+class NAM(torch.nn.Module):
 
     def __init__(
         self,
-        config,
-        name,
-        *,
         num_inputs: int,
         num_units: int,
+        dropout: float
     ) -> None:
-        super(NAM, self).__init__(config, name)
-
+        super(NAM, self).__init__()
         self._num_inputs = num_inputs
 
         if isinstance(num_units, list):
@@ -29,11 +26,11 @@ class NAM(Model):
         elif isinstance(num_units, int):
             self._num_units = [num_units for _ in range(self._num_inputs)]
 
-        self.dropout = nn.Dropout(p=self.config.dropout)
+        self.dropout = nn.Dropout(p=dropout)
 
         ## Builds the FeatureNNs on the first call.
         self.feature_nns = nn.ModuleList([
-            FeatureNN(config=config, name=f'FeatureNN_{i}', input_shape=1, num_units=self._num_units[i], feature_num=i)
+            FeatureNN(input_shape=1, num_units=self._num_units[i], dropout=dropout, feature_num=i)
             for i in range(num_inputs)
         ])
 
@@ -79,11 +76,8 @@ class MultiTaskNAM(Model):
         self.dropout = nn.Dropout(p=self.config.dropout)
 
         ## Builds the FeatureNNs on the first call.
-        self.feature_nns = nn.Sequential()
-        for i in range(self._num_inputs):
-            self.feature_nns.add_module(
-                f'MultiFeatureNN_{i}',
-                MultiFeatureNN(
+        self.feature_nns = nn.ModuleList([
+            MultiFeatureNN(
                     config=config,
                     name=f'MultiFeatureNN_{i}',
                     input_shape=1,
@@ -91,8 +85,10 @@ class MultiTaskNAM(Model):
                     feature_num=i,
                     num_subnets=self._num_subnets,
                     num_tasks=self._num_tasks
-                ))
-
+                )
+            for i in range(self._num_inputs)
+        ])
+        
         self._bias = torch.nn.Parameter(data=torch.zeros(1, self._num_tasks))
 
     def calc_outputs(self, inputs: torch.Tensor) -> Sequence[torch.Tensor]:

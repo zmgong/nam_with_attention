@@ -2,8 +2,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from nam.types import Config
-
 
 def bce_loss(logits: torch.Tensor, targets: torch.Tensor, weights: torch.tensor) -> torch.Tensor:
     """Cross entropy loss for binary classification.
@@ -15,15 +13,23 @@ def bce_loss(logits: torch.Tensor, targets: torch.Tensor, weights: torch.tensor)
     Returns:
       Binary Cross-entropy loss between model predictions and the targets.
     """
-    return F.binary_cross_entropy_with_logits(logits.view(-1), targets.view(-1))
+    loss = F.binary_cross_entropy_with_logits(logits, targets, reduction='none')
+    loss *= weights
+    loss = torch.sum(loss, dim=0)
+    loss = loss / torch.count_nonzero(weights, dim=0)
+    return torch.mean(loss)
 
 
 def mse_loss(logits: torch.Tensor, targets: torch.Tensor, weights: torch.tensor) -> torch.Tensor:
     """Mean squared error loss for regression."""
-    return F.mse_loss(logits.view(-1), targets.view(-1))
+    loss = F.mse_loss(logits, targets, reduction='none')
+    loss *= weights
+    loss = torch.sum(loss, dim=0)
+    loss = loss / torch.sum(weights, dim=0)
+    return loss
 
 
-def penalized_loss(config: Config, logits: torch.Tensor, targets: torch.Tensor, weights: torch.tensor,
+def penalized_loss(loss: torch.Tensor, logits: torch.Tensor, targets: torch.Tensor, weights: torch.tensor,
                    fnn_out: torch.Tensor, model: nn.Module) -> torch.Tensor:
     """Computes penalized loss with L2 regularization and output penalty.
 
@@ -46,18 +52,30 @@ def penalized_loss(config: Config, logits: torch.Tensor, targets: torch.Tensor, 
 
     def weight_decay(model: nn.Module) -> torch.Tensor:
         """Penalizes the L2 norm of weights in each feature net."""
-        num_networks = 1 if config.use_dnn else len(model.feature_nns)
+        num_networks = len(model.feature_nns)
         l2_losses = [(x**2).sum() for x in model.parameters()]
         return sum(l2_losses) / num_networks
 
-    loss_func = mse_loss if config.regression else bce_loss
-    loss = loss_func(logits, targets, weights)
+    # loss_func = mse_loss if model.regression else bce_loss
+    # loss = loss_func(logits, targets, weights)
 
     reg_loss = 0.0
-    if config.output_regularization > 0:
-        reg_loss += config.output_regularization * features_loss(fnn_out)
+    if model.output_regularization > 0:
+        reg_loss += model.output_regularization * features_loss(fnn_out)
 
-    if config.l2_regularization > 0:
-        reg_loss += config.l2_regularization * weight_decay(model)
+    if model.l2_regularization > 0:
+        reg_loss += model.l2_regularization * weight_decay(model)
 
     return loss + reg_loss
+
+
+def penalized_mse_loss(logits: torch.Tensor, targets: torch.Tensor, weights: torch.tensor,
+                   fnn_out: torch.Tensor, model: nn.Module) -> torch.Tensor:
+    loss = mse_loss(logits, targets, weights)
+    return penalized_loss(loss, logits, targets, weights, fnn_out, model)
+
+
+def penalized_bce_loss(logits: torch.Tensor, targets: torch.Tensor, weights: torch.tensor,
+                   fnn_out: torch.Tensor, model: nn.Module) -> torch.Tensor:
+    loss = bce_loss(logits, targets, weights)
+    return penalized_loss(loss, logits, targets, weights, fnn_out, model)

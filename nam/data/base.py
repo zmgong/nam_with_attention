@@ -18,7 +18,7 @@ class CSVDataset(torch.utils.data.Dataset):
                  data_path: Union[str, pd.DataFrame],
                  features_columns: list,
                  targets_column: str,
-                 weights_column: str = None):
+                 weights_columns: str = None):
         """Custom dataset for csv files.
 
         Args:
@@ -26,14 +26,14 @@ class CSVDataset(torch.utils.data.Dataset):
             data_path (str): [description]
             features_columns (list): [description]
             targets_column (str): [description]
-            weights_column (str, optional): [description]. Defaults to None.
+            weights_columns (str, optional): [description]. Defaults to None.
         """
 
         self._config = config
         self.data_path = data_path
         self.features_columns = features_columns
         self.targets_column = targets_column
-        self.weights_column = weights_column
+        self.weights_columns = weights_columns
 
         self.data = read_dataset(data_path)
 
@@ -41,50 +41,58 @@ class CSVDataset(torch.utils.data.Dataset):
         self.raw_y = self.data[targets_column].copy()
 
         self.X, self.y = self.raw_X.to_numpy(), self.raw_y.to_numpy()
-        if weights_column is not None:
-            self.wgts = self.data[weights_column].copy().to_numpy()
+        if weights_columns is not None:
+            self.weights = self.data[weights_columns].copy().to_numpy()
         else:
-            self.wgts = np.ones_like(self.raw_y)
+            # self.weights = np.ones_like(self.raw_y)
+            self.weights = None
+
 
     def __len__(self):
         return len(self.data)
 
     def __getitem__(self, idx: int) -> Tuple[np.array, ...]:
-        return self.X[idx], self.y[idx], self.wgts[idx]
+        return self.X[idx], self.y[idx], self.weights[idx]
 
     @property
     def config(self):
         return self._config
 
 
-class NAMDataset(CSVDataset):
+class NAMDatasetOld(CSVDataset):
 
     def __init__(self,
                  config,
                  data_path: Union[str, pd.DataFrame],
                  features_columns: list,
                  targets_column: str,
-                 weights_column: str = None) -> None:
+                 weights_columns: str = None) -> None:
         super().__init__(config=config,
                          data_path=data_path,
                          features_columns=features_columns,
                          targets_column=targets_column,
-                         weights_column=weights_column)
+                         weights_columns=weights_columns)
 
         self.col_min_max = self.get_col_min_max()
 
         self.features, self.features_names = transform_data(self.raw_X)
         self.compute_features()
-
-        if (not config.regression) and (not isinstance(self.raw_y, np.ndarray)):
-            targets = pd.get_dummies(self.raw_y).values
-            targets = np.array(np.argmax(targets, axis=-1))
-        else:
-            targets = self.y
+        targets = self.y
+        # if (not config.regression) and (not isinstance(self.raw_y, pd.Series)):
+        #     targets = pd.get_dummies(self.raw_y).values
+        #     targets = np.array(np.argmax(targets, axis=-1))
+        # else:
+        #     targets = self.y
 
         self.features = torch.from_numpy(self.features).float()
         self.targets = torch.from_numpy(targets).view(-1, 1).float()
-        self.wgts = torch.from_numpy(self.wgts)
+        
+        if self.weights_columns is not None:
+            self.weights = torch.tensor(self.weights).float()
+            min_vals = torch.min(self.weights, dim=0).values
+            max_vals = torch.max(self.weights, dim=0).values
+            self.weights = ((self.weights - min_vals) / (max_vals - min_vals))
+            # self.weights = torch.from_numpy(self.weights)
 
         self.setup_dataloaders()
 
@@ -92,7 +100,9 @@ class NAMDataset(CSVDataset):
         return len(self.features)
 
     def __getitem__(self, idx: int) -> Tuple[np.array, ...]:
-        return self.features[idx], self.targets[idx]  #, self.wgts[idx]
+        if self.weights is not None:
+            return self.features[idx], self.targets[idx], self.weights[idx]
+        return self.features[idx], self.targets[idx]
 
     def get_col_min_max(self):
         col_min_max = {}

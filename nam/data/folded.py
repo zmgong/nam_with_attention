@@ -10,10 +10,10 @@ from sklearn.model_selection import StratifiedShuffleSplit
 from torch.utils.data import DataLoader
 from torch.utils.data import Subset
 
-from .base import NAMDataset
+from .base import NAMDatasetOld
 
 
-class FoldedDataset(NAMDataset):
+class FoldedDataset(NAMDatasetOld):
 
     def __init__(self,
                  config,

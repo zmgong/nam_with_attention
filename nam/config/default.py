@@ -58,7 +58,7 @@ def defaults() -> Config:
 
         ## Early stopping
         use_dnn=False,
-        patience=40,  ## For early stopping
+        patience=0,  ## For early stopping
     )
 
     return config

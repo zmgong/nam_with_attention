@@ -4,9 +4,10 @@ import numpy as np
 import pandas as pd
 import sklearn
 from sklearn.datasets import load_breast_cancer
+from sklearn.preprocessing import OneHotEncoder
 
 from nam.config import defaults
-from nam.data.base import NAMDataset
+from nam.data.base import NAMDatasetOld
 from nam.data.folded import FoldedDataset
 
 cfg = defaults()
@@ -130,7 +131,42 @@ def load_compas_data(
                               features_columns=dataset.columns[:-1],
                               targets_column=dataset.columns[-1])
   else:
-      return NAMDataset(config,
-                          data_path=dataset,
+      return NAMDatasetOld(config,
+                              data_path=dataset,
                           features_columns=dataset.columns[:-1],
                           targets_column=dataset.columns[-1])
+
+
+def load_mtl_compas_data(
+    config,
+    path: str = '~/nam/data/compas/recid.data',
+    features_columns: list = [
+        "age", "race", "priors_count", "length_of_stay", "c_charge_degree"
+    ],
+    targets_columns: str = ["two_year_recid"],
+    weights_column: str = ['sex']
+) -> Dict:
+  dataset = pd.read_csv(path, delimiter=' ', header=None)
+  dataset.columns = ["age", "race", "sex", "priors_count", "length_of_stay", "c_charge_degree", "two_year_recid"]
+  ohe = OneHotEncoder(sparse=False, handle_unknown='ignore')
+  new_vals = ohe.fit_transform(dataset[weights_column].to_numpy().reshape(-1, 1))
+  new_columns = ohe.categories_[0]
+  
+  weights_df = pd.DataFrame(new_vals, columns=new_columns)
+
+  dataset = pd.concat([dataset, weights_df], axis=1)
+
+  config.regression = False
+
+  if config.cross_val:
+      return FoldedDataset(config,
+                              data_path=dataset,
+                              features_columns=features_columns,
+                              targets_column=targets_columns,
+                              weights_columns=new_columns)
+  else:
+      return NAMDataset(config,
+                              data_path=dataset,
+                              features_columns=features_columns,
+                              targets_column=targets_columns,
+                              weights_columns=new_columns)

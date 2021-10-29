@@ -14,13 +14,15 @@ class Checkpointer:
     def __init__(
         self,
         model: nn.Module,
-        config: dict,
+        log_dir: str = 'output'
+        # config: dict,
     ) -> None:
         """Constructs a simple load/save checkpointer."""
         self._model = model
-        self._config = config
+        # self._config = config
 
-        self._ckpt_dir = os.path.join(config.logdir, "ckpts")
+        # self._ckpt_dir = os.path.join(config.logdir, "ckpts")
+        self._ckpt_dir = os.path.join(log_dir, "ckpts")
         os.makedirs(self._ckpt_dir, exist_ok=True)
 
     def save(

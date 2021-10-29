@@ -17,7 +17,8 @@ def _format_key(key: str) -> str:
 class TensorBoardLogger(base.Logger):
     """A simple `Pytorch`-friendly `TensorBoard` wrapper."""
 
-    def __init__(self, config: dict = None, project: str = "nam", label: str = 'Logs') -> None:
+    # def __init__(self, config: dict = None, project: str = "nam", label: str = 'Logs') -> None:
+    def __init__(self, project: str = "nam", label: str = 'Logs', log_dir: str = 'output') -> None:
         """Initializes the logger. Constructs a simple `TensorBoard` wrapper.
 
         Args:
@@ -26,23 +27,24 @@ class TensorBoardLogger(base.Logger):
         """
         self._time = time.time()
         self.label = label
-        self.config = config
+        # self.config = config
         self._iter = 0
 
         # Makes sure output directories exist.
-        log_dir = os.path.join(config.logdir, "logs")
+        # log_dir = os.path.join(config.logdir, "logs")
+        log_dir = os.path.join(log_dir, "logs")
         os.makedirs(log_dir, exist_ok=True)
 
         # Initialise the `TensorBoard` writers.
         self._summary_writter = SummaryWriter(log_dir=log_dir)
 
-        if config.wandb:
-            wandb.init(project=project, config=vars(config), reinit=True, magic=True)
+        # if config.wandb:
+        #     wandb.init(project=project, config=vars(config), reinit=True, magic=True)
 
     def write(self, values: base.LoggingData):
         for key, value in values.items():
             self._summary_writter.add_scalar(f'{self.label}/{_format_key(key)}', value, global_step=self._iter)
-            if self.config.wandb:
-                wandb.log({f'{self.label}/{_format_key(key)}': value})
+            # if self.config.wandb:
+            #     wandb.log({f'{self.label}/{_format_key(key)}': value})
 
         self._iter += 1

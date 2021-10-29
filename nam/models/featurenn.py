@@ -8,17 +8,17 @@ from .activation import ExU
 from .activation import LinReLU
 
 
-class FeatureNN(Model):
+class FeatureNN(torch.nn.Module):
     """Neural Network model for each individual feature."""
 
     def __init__(
         self,
-        config,
-        name,
-        *,
         input_shape: int,
         num_units: int,
-        feature_num: int = 0,
+        dropout: float,
+        feature_num: int,
+        hidden_sizes: list = [64, 32],
+        activation: str = 'relu'
     ) -> None:
         """Initializes FeatureNN hyperparameters.
 
@@ -27,31 +27,32 @@ class FeatureNN(Model):
           dropout: Coefficient for dropout regularization.
           feature_num: Feature Index used for naming the hidden layers.
         """
-        super(FeatureNN, self).__init__(config, name)
+        super(FeatureNN, self).__init__()
         self._input_shape = input_shape
         self._num_units = num_units
         self._feature_num = feature_num
-        self.dropout = nn.Dropout(p=self.config.dropout)
-
-        hidden_sizes = [self._num_units] + self.config.hidden_sizes
+        self.dropout = nn.Dropout(p=dropout)
+        self.hidden_sizes = hidden_sizes
+        self.activation = activation
+        
+        all_hidden_sizes = [self._num_units] + self.hidden_sizes
 
         layers = []
 
         ## First layer is ExU
-        if self.config.activation == "exu":
+        if self.activation == "exu":
             layers.append(ExU(in_features=input_shape, out_features=num_units))
         else:
             layers.append(LinReLU(in_features=input_shape, out_features=num_units))
 
         ## Hidden Layers
-        for in_features, out_features in zip(hidden_sizes, hidden_sizes[1:]):
+        for in_features, out_features in zip(all_hidden_sizes, all_hidden_sizes[1:]):
             layers.append(LinReLU(in_features, out_features))
 
         ## Last Linear Layer
-        layers.append(nn.Linear(in_features=hidden_sizes[-1], out_features=1))
+        layers.append(nn.Linear(in_features=all_hidden_sizes[-1], out_features=1, bias=False))
 
         self.model = nn.ModuleList(layers)
-        # self.apply(init_weights)
 
     def forward(self, inputs) -> torch.Tensor:
         """Computes FeatureNN output with either evaluation or training
