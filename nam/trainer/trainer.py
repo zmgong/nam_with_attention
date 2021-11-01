@@ -10,7 +10,7 @@ import wandb
 from tqdm.autonotebook import tqdm
 
 from nam.models.saver import Checkpointer
-from nam.trainer.losses import penalized_mse_loss
+# from nam.trainer.losses import make_penalized_loss_func
 from nam.utils.loggers import TensorBoardLogger
 from torch.utils.data import DataLoader
 from torch.utils.data import random_split
@@ -21,6 +21,7 @@ class Trainer:
     def __init__(self, 
         model: Sequence[nn.Module], 
         dataset: torch.utils.data.Dataset,
+        criterion: Callable,
         batch_size: int = 1024,
         num_workers: int = 0,
         num_epochs: int = 1000,
@@ -32,8 +33,7 @@ class Trainer:
         lr: float = 0.02082,
         decay_rate: float = 0.0,
         save_model_frequency: int = 0,
-        patience: int = 40,
-        criterion: Callable = penalized_mse_loss,
+        patience: int = 40
     ) -> None:
         self.model = model
         self.dataset = dataset
@@ -97,7 +97,7 @@ class Trainer:
         # Forward pass from the model.
         predictions, fnn_out = self.model(features)
 
-        loss = self.criterion(predictions, targets, weights, fnn_out, self.model)
+        loss = self.criterion(predictions, targets, weights, fnn_out)
         self.metric_train.update((predictions, targets))
 
         # Backward pass.
@@ -136,7 +136,7 @@ class Trainer:
         predictions, fnn_out = self.model(features)
 
         # Calculates loss on mini-batch.
-        loss = self.criterion(predictions, targets, weights, fnn_out, self.model)
+        loss = self.criterion(predictions, targets, weights, fnn_out)
         self.metric_val.update((predictions, targets))
 
         return loss

@@ -5,8 +5,7 @@ from nam.data import NAMDataset
 from nam.models import NAM, MultiTaskNAM
 from nam.models import get_num_units
 from nam.trainer import Trainer
-from nam.trainer.losses import penalized_bce_loss, penalized_mse_loss
-
+from nam.trainer.losses import make_penalized_loss_func
 
 class NAMBase:
     def __init__(
@@ -22,6 +21,8 @@ class NAMBase:
         device: str = 'cpu',
         lr: float = 0.02082,
         decay_rate: float = 0.0,
+        output_reg: float = 0.0,
+        l2_reg: float = 0.0,
         save_model_frequency: int = 10,
         patience: int = 40
     ) -> None:
@@ -36,22 +37,24 @@ class NAMBase:
         self.device = device
         self.lr = lr
         self.decay_rate = decay_rate
+        self.output_reg = output_reg
+        self.l2_reg = l2_reg
         self.save_model_frequency = save_model_frequency
         self.patience = patience
         self.criterion = None
 
     def fit(self, X, y, w=None) -> None:
-        # (1) Create dataset
         self.dataset = NAMDataset(X, y, w)
         
-        # (2) Initialize model
         self.model = NAM(
             num_inputs=X.shape[1],
             num_units=get_num_units(self.units_multiplier, self.num_basis_functions, self.dataset.X),
             dropout=self.dropout
         )
 
-        # (3) Train model
+        self.criterion = make_penalized_loss_func(self.model, self.regression, 
+            self.output_reg, self.l2_reg)
+
         self.trainer = Trainer(
             model=self.model,
             dataset=self.dataset,
@@ -85,7 +88,7 @@ class NAMBase:
 class NAMClassifier(NAMBase):
     def __init__(self) -> None:
         super(NAMClassifier, self).__init__()
-        self.criterion = penalized_bce_loss
+        self.regression = False
 
     def predict_proba(self, X) -> None:
         return torch.sigmoid(super().predict_proba(X))
@@ -97,7 +100,7 @@ class NAMClassifier(NAMBase):
 class NAMRegressor(NAMBase):
     def __init__(self) -> None:
         super(NAMRegressor).__init__()
-        self.criterion = penalized_mse_loss
+        self.regression = True
 
     def predict_proba(self, X) -> None:
         return super().predict_proba(X)
