@@ -14,9 +14,9 @@ class FeatureNN(torch.nn.Module):
     def __init__(
         self,
         input_shape: int,
+        feature_num: int,
         num_units: int,
         dropout: float,
-        feature_num: int,
         hidden_sizes: list = [64, 32],
         activation: str = 'relu'
     ) -> None:
@@ -31,16 +31,17 @@ class FeatureNN(torch.nn.Module):
         self._input_shape = input_shape
         self._num_units = num_units
         self._feature_num = feature_num
-        self.dropout = nn.Dropout(p=dropout)
-        self.hidden_sizes = hidden_sizes
-        self.activation = activation
+        self._hidden_sizes = hidden_sizes
+        self._activation = activation
         
-        all_hidden_sizes = [self._num_units] + self.hidden_sizes
+        all_hidden_sizes = [self._num_units] + self._hidden_sizes
 
         layers = []
 
+        self.dropout = nn.Dropout(p=dropout)
+
         ## First layer is ExU
-        if self.activation == "exu":
+        if self._activation == "exu":
             layers.append(ExU(in_features=input_shape, out_features=num_units))
         else:
             layers.append(LinReLU(in_features=input_shape, out_features=num_units))
@@ -63,17 +64,17 @@ class FeatureNN(torch.nn.Module):
         return outputs
 
 
-class MultiFeatureNN(Model):
+class MultiFeatureNN(torch.nn.Module):
     def __init__(
         self,
-        config,
-        name,
-        *,
         input_shape: int,
-        num_units: int,
         feature_num: int,
+        num_units: int,
         num_subnets: int,
-        num_tasks: int
+        num_tasks: int,
+        dropout: float,
+        hidden_sizes: list = [64, 32],
+        activation: str = 'relu'
     ) -> None:
         """Initializes FeatureNN hyperparameters.
         Args:
@@ -81,14 +82,16 @@ class MultiFeatureNN(Model):
             dropout: Coefficient for dropout regularization.
             feature_num: Feature Index used for naming the hidden layers.
         """
-        super(MultiFeatureNN, self).__init__(config, name)
+        super(MultiFeatureNN, self).__init__()
         subnets = [
             FeatureNN(
-            config,
-            name,
-            input_shape=input_shape,
-            num_units=num_units,
-            feature_num=feature_num,
+                input_shape=input_shape,
+                feature_num=feature_num,
+                num_units=num_units,
+                dropout=dropout,
+                hidden_sizes=hidden_sizes,
+                activation=activation
+                
             )
             for i in range(num_subnets)
         ]

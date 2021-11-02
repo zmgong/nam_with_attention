@@ -5,7 +5,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from nam.models.base import Model
 from nam.models.featurenn import FeatureNN, MultiFeatureNN
 
 
@@ -15,6 +14,7 @@ class NAM(torch.nn.Module):
         self,
         num_inputs: int,
         num_units: int,
+        hidden_sizes: list,
         dropout: float,
         feature_dropout: float
     ) -> None:
@@ -31,7 +31,12 @@ class NAM(torch.nn.Module):
 
         ## Builds the FeatureNNs on the first call.
         self.feature_nns = nn.ModuleList([
-            FeatureNN(input_shape=1, num_units=self._num_units[i], dropout=dropout, feature_num=i)
+            FeatureNN(
+                input_shape=1, 
+                num_units=self._num_units[i], 
+                dropout=dropout, feature_num=i, 
+                hidden_sizes=hidden_sizes
+            )
             for i in range(num_inputs)
         ])
 
@@ -50,19 +55,19 @@ class NAM(torch.nn.Module):
         return out + self._bias, dropout_out
 
 
-class MultiTaskNAM(Model):
+class MultiTaskNAM(torch.nn.Module):
 
     def __init__(
         self,
-        config,
-        name,
-        *,
         num_inputs: int,
         num_units: int,
         num_subnets: int,
-        num_tasks: int
+        num_tasks: int,
+        hidden_sizes: list,
+        dropout: float,
+        feature_dropout: float
     ) -> None:
-        super(MultiTaskNAM, self).__init__(config, name)
+        super(MultiTaskNAM, self).__init__()
 
         self._num_inputs = num_inputs
         self._num_subnets = num_subnets
@@ -74,18 +79,18 @@ class MultiTaskNAM(Model):
         elif isinstance(num_units, int):
             self._num_units = [num_units for _ in range(self._num_inputs)]
 
-        self.dropout = nn.Dropout(p=self.config.dropout)
+        self.dropout = nn.Dropout(p=feature_dropout)
 
         ## Builds the FeatureNNs on the first call.
         self.feature_nns = nn.ModuleList([
             MultiFeatureNN(
-                    config=config,
-                    name=f'MultiFeatureNN_{i}',
                     input_shape=1,
-                    num_units=self._num_units[i],
                     feature_num=i,
+                    num_units=self._num_units[i],
                     num_subnets=self._num_subnets,
-                    num_tasks=self._num_tasks
+                    num_tasks=self._num_tasks,
+                    dropout=dropout,
+                    hidden_sizes=hidden_sizes
                 )
             for i in range(self._num_inputs)
         ])

@@ -165,7 +165,7 @@ def load_mtl_compas_data(
                               targets_column=targets_columns,
                               weights_columns=new_columns)
   else:
-      return NAMDataset(config,
+      return NAMDatasetOld(config,
                               data_path=dataset,
                               features_columns=features_columns,
                               targets_column=targets_columns,
