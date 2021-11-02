@@ -15,7 +15,8 @@ class NAM(torch.nn.Module):
         self,
         num_inputs: int,
         num_units: int,
-        dropout: float
+        dropout: float,
+        feature_dropout: float
     ) -> None:
         super(NAM, self).__init__()
         self._num_inputs = num_inputs
@@ -26,7 +27,7 @@ class NAM(torch.nn.Module):
         elif isinstance(num_units, int):
             self._num_units = [num_units for _ in range(self._num_inputs)]
 
-        self.dropout = nn.Dropout(p=dropout)
+        self.dropout = nn.Dropout(p=feature_dropout)
 
         ## Builds the FeatureNNs on the first call.
         self.feature_nns = nn.ModuleList([

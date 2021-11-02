@@ -29,7 +29,7 @@ def mse_loss(logits: torch.Tensor, targets: torch.Tensor, weights: torch.tensor)
     return loss
 
 
-def penalize_loss(loss: torch.Tensor, fnn_out: torch.Tensor, model: nn.Module,
+def reg_penalty(fnn_out: torch.Tensor, model: nn.Module,
     output_regularization: float, l2_regularization: float
 ) -> torch.Tensor:
     """Computes penalized loss with L2 regularization and output penalty.
@@ -44,12 +44,11 @@ def penalize_loss(loss: torch.Tensor, fnn_out: torch.Tensor, model: nn.Module,
       The penalized loss.
     """
 
-    def features_loss(per_feature_outputs: torch.Tensor) -> torch.Tensor:
-        """Penalizes the L2 norm of the prediction of each feature net."""
-        per_feature_norm = [  # L2 Regularization
-            torch.mean(torch.square(outputs)) for outputs in per_feature_outputs
-        ]
-        return sum(per_feature_norm) / len(per_feature_norm)
+    def features_loss(per_feature_outputs):
+        b, f = per_feature_outputs.shape
+        out = torch.sum(per_feature_outputs ** 2) / (b * f)
+
+        return output_regularization * out
 
     def weight_decay(model: nn.Module) -> torch.Tensor:
         """Penalizes the L2 norm of weights in each feature net."""
@@ -59,20 +58,20 @@ def penalize_loss(loss: torch.Tensor, fnn_out: torch.Tensor, model: nn.Module,
 
     reg_loss = 0.0
     if output_regularization > 0:
-        reg_loss += output_regularization * features_loss(fnn_out)
+        reg_loss += features_loss(fnn_out)
 
     if l2_regularization > 0:
         reg_loss += l2_regularization * weight_decay(model)
 
-    return loss + reg_loss
+    return reg_loss
 
 
 def make_penalized_loss_func(model, regression, output_regularization, l2_regularization):
     loss_func = mse_loss if regression else bce_loss
     def penalized_loss_func(logits, targets, weights, fnn_out):
         loss = loss_func(logits, targets, weights)
-        penalized_loss = penalize_loss(loss, fnn_out, model, output_regularization, l2_regularization)
-        return penalized_loss
+        loss += reg_penalty(fnn_out, model, output_regularization, l2_regularization)
+        return loss
     return penalized_loss_func
 
 

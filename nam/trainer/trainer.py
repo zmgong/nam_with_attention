@@ -35,7 +35,7 @@ class Trainer:
         save_model_frequency: int = 0,
         patience: int = 40
     ) -> None:
-        self.model = model
+        self.model = model.to(device)
         self.dataset = dataset
         self.batch_size = batch_size
         self.num_workers = num_workers
