@@ -1,3 +1,4 @@
+from re import T
 from types import SimpleNamespace
 from typing import Callable, Mapping
 from typing import Sequence
@@ -10,7 +11,6 @@ import wandb
 from tqdm.autonotebook import tqdm
 
 from nam.models.saver import Checkpointer
-# from nam.trainer.losses import make_penalized_loss_func
 from nam.utils.loggers import TensorBoardLogger
 from torch.utils.data import DataLoader
 from torch.utils.data import random_split
@@ -27,7 +27,6 @@ class Trainer:
         num_epochs: int = 1000,
         log_dir: str = None,
         val_split: float = 0.15,
-        train_split: float = 0.85,
         test_split: float = None,
         device: str = 'cpu',
         lr: float = 0.02082,
@@ -62,27 +61,34 @@ class Trainer:
         self.best_checkpoint = None
 
         self.val_split = val_split
-        self.train_split = train_split
         self.test_split = test_split
 
-        # self.criterion = lambda inputs, targets, weights, fnns_out, model: penalized_loss(
-        #     inputs, targets, weights, fnns_out, model)
-        self.criterion = criterion#penalized_loss
+        self.criterion = criterion
 
         output_transform_fn = lambda output: (torch.sigmoid(output[0]), output[1])
         self.metric_train = ROC_AUC(output_transform_fn)
         self.metric_val = ROC_AUC(output_transform_fn)
         self.metric_name = 'AUROC'
+
+        self.setup_dataloaders()
         
-        # TODO: Enable test split for users who want to use the Trainer outside of
-        # NAMClassifier or NAMRegressor
-        val_size = int(self.val_split * len(self.dataset))
-        train_size = len(self.dataset) - val_size
-        train_subset, val_subset = random_split(self.dataset, [train_size, val_size])
+    def setup_dataloaders(self):
+        test_size = int(self.test_split * len(self.dataset)) if self.test_split else 0
+        val_size = int(self.val_split * (len(self.dataset) - test_size))
+        train_size = len(self.dataset) - val_size - test_size
+
+        train_subset, val_subset, test_subset = random_split(self.dataset, [train_size, val_size, test_size])
+
         self.train_dl = DataLoader(train_subset, batch_size=self.batch_size, 
             shuffle=True, num_workers=self.num_workers)
+
         self.val_dl = DataLoader(val_subset, batch_size=self.batch_size, 
             shuffle=False, num_workers=self.num_workers)
+
+        self.test_dl = None
+        if test_size > 0:
+            self.test_dl = DataLoader(test_subset, batch_size=self.batch_size, 
+                shuffle=False, num_workers=self.num_workers)
 
     def train_step(self, batch: torch.Tensor) -> torch.Tensor:
         """Performs a single gradient-descent optimization step."""
@@ -192,7 +198,6 @@ class Trainer:
                     self.checkpointer.save(epoch)
 
                 # Save best checkpoint for early stopping
-                # if self.config.patience > 0 and metric_val > best_loss:
                 if self.patience > 0 and metric_val > best_loss:#loss_val < best_loss:
                     # TODO: support early stopping on both loss and metric
                     best_loss = metric_val
@@ -204,6 +209,7 @@ class Trainer:
                 # Stop training if early stopping patience exceeded
                 epochs_since_best += 1
                 if self.patience > 0 and epochs_since_best > self.patience:
+                    self.model = self.checkpointer.load(self.best_checkpoint)
                     break
 
     def test(self):
@@ -211,9 +217,6 @@ class Trainer:
         if not self.test_split:
             # TODO: Find correct exception to throw here.
             raise Exception() 
-
-        if self.config.patience > 0:
-            self.model = self.checkpointer.load(self.best_checkpoint)
         
         num_epochs = 1
         with tqdm(range(num_epochs)) as pbar_epoch:

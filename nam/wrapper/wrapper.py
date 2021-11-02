@@ -68,7 +68,6 @@ class NAMBase:
             num_epochs=self.num_epochs,
             log_dir=self.log_dir,
             val_split=self.val_split,
-            train_split=1-self.val_split,
             test_split=None,
             device=self.device,
             lr=self.lr,
