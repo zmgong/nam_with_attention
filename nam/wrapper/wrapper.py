@@ -1,5 +1,5 @@
+from numpy.typing import ArrayLike
 from sklearn.exceptions import NotFittedError
-from typing import ArrayLike
 import torch
 
 from nam.data import NAMDataset
@@ -64,7 +64,7 @@ class NAMBase:
 
     def fit(self, X, y, w=None) -> None:
         # TODO: Don't store dataset in NAM object if possible
-        self.dataset = NAMDataset(X, y, w)
+        dataset = NAMDataset(X, y, w)
         
         self._initialize_model(X, y)
 
@@ -73,7 +73,7 @@ class NAMBase:
 
         self.trainer = Trainer(
             model=self.model,
-            dataset=self.dataset,
+            dataset=dataset,
             batch_size=self.batch_size,
             num_workers=self.num_workers,
             num_epochs=self.num_epochs,
@@ -89,6 +89,7 @@ class NAMBase:
         )
         
         self.trainer.train()
+        self.trainer.close()
         self._fitted = True
 
     def predict(self, X) -> ArrayLike:
@@ -236,10 +237,10 @@ class MultiTaskNAMClassifier(NAMClassifier):
         )
         self.num_subnets = num_subnets
 
-    def initialize_model(self, X, y):
+    def _initialize_model(self, X, y):
         self.model = MultiTaskNAM(
             num_inputs=X.shape[1],
-            num_units=get_num_units(self.units_multiplier, self.num_basis_functions, self.dataset.X),
+            num_units=get_num_units(self.units_multiplier, self.num_basis_functions, X),
             num_subnets=self.num_subnets,
             num_tasks=y.shape[1],
             dropout=self.dropout,
@@ -291,7 +292,7 @@ class MultiTaskNAMRegressor(NAMRegressor):
         )
         self.num_subnets = num_subnets
 
-    def initialize_model(self, X, y):
+    def _initialize_model(self, X, y):
         self.model = MultiTaskNAM(
             num_inputs=X.shape[1],
             num_units=get_num_units(self.units_multiplier, self.num_basis_functions, X),

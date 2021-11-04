@@ -1,3 +1,4 @@
+import gc
 from re import T
 from types import SimpleNamespace
 from typing import Callable, Mapping
@@ -7,7 +8,6 @@ from ignite.contrib.metrics import ROC_AUC
 import torch
 import torch.nn as nn
 import torch.optim as optim
-import wandb
 from tqdm.autonotebook import tqdm
 
 from nam.models.saver import Checkpointer
@@ -79,6 +79,7 @@ class Trainer:
 
         train_subset, val_subset, test_subset = random_split(self.dataset, [train_size, val_size, test_size])
 
+        # TODO: Possibly find way not to store data longterm -- maybe use close function
         self.train_dl = DataLoader(train_subset, batch_size=self.batch_size, 
             shuffle=True, num_workers=self.num_workers)
 
@@ -232,3 +233,14 @@ class Trainer:
                 pbar_epoch.set_description(f"""Epoch({epoch}):
                     Test Loss: {loss_test.detach().cpu().numpy().item():.3f} |
                     Test {self.metric_name}: {metrics_test:.3f}""")
+
+    def close(self):
+        del self.dataset
+        del self.train_dl
+        del self.val_dl
+        if self.test_dl:
+            del self.test_dl
+        
+        gc.collect()
+        return
+    
