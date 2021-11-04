@@ -1,3 +1,4 @@
+from typing import Callable
 from numpy.typing import ArrayLike
 from sklearn.exceptions import NotFittedError
 import torch
@@ -27,7 +28,8 @@ class NAMBase:
         output_reg: float = 0.2078,
         l2_reg: float = 0.0,
         save_model_frequency: int = 10,
-        patience: int = 60
+        patience: int = 60,
+        loss_func: Callable = None
     ) -> None:
         self.units_multiplier = units_multiplier
         self.num_basis_functions = num_basis_functions
@@ -46,7 +48,8 @@ class NAMBase:
         self.l2_reg = l2_reg
         self.save_model_frequency = save_model_frequency
         self.patience = patience
-        self.criterion = None
+        self.loss_func = loss_func
+
         self._fitted = False
 
     def _initialize_model(self, X, y):
@@ -68,8 +71,8 @@ class NAMBase:
         
         self._initialize_model(X, y)
 
-        self.criterion = make_penalized_loss_func(self.model, self.regression, 
-            self.output_reg, self.l2_reg)
+        self.criterion = make_penalized_loss_func(self.loss_func, self.model, 
+            self.regression, self.output_reg, self.l2_reg)
 
         self.trainer = Trainer(
             model=self.model,
@@ -121,7 +124,8 @@ class NAMClassifier(NAMBase):
         output_reg: float = 0.2078,
         l2_reg: float = 0.0,
         save_model_frequency: int = 10,
-        patience: int = 60
+        patience: int = 60,
+        loss_func: Callable = None
     ) -> None:
         super(NAMClassifier, self).__init__(
             units_multiplier=units_multiplier,
@@ -140,7 +144,8 @@ class NAMClassifier(NAMBase):
             output_reg=output_reg,
             l2_reg=l2_reg,
             save_model_frequency=save_model_frequency,
-            patience=patience
+            patience=patience,
+            loss_func=loss_func
         )
         self.regression = False
 
@@ -170,7 +175,8 @@ class NAMRegressor(NAMBase):
         output_reg: float = 0.2078,
         l2_reg: float = 0.0,
         save_model_frequency: int = 10,
-        patience: int = 60
+        patience: int = 60,
+        loss_func: Callable = None
     ) -> None:
         super(NAMRegressor, self).__init__(
             units_multiplier=units_multiplier,
@@ -189,7 +195,8 @@ class NAMRegressor(NAMBase):
             output_reg=output_reg,
             l2_reg=l2_reg,
             save_model_frequency=save_model_frequency,
-            patience=patience
+            patience=patience,
+            loss_func=loss_func
         )
         self.regression = True
 
@@ -214,7 +221,8 @@ class MultiTaskNAMClassifier(NAMClassifier):
         output_reg: float = 0.2078,
         l2_reg: float = 0.0,
         save_model_frequency: int = 10,
-        patience: int = 60
+        patience: int = 60,
+        loss_func: Callable = None
     ) -> None:
         super(MultiTaskNAMClassifier, self).__init__(
             units_multiplier=units_multiplier,
@@ -233,7 +241,8 @@ class MultiTaskNAMClassifier(NAMClassifier):
             output_reg=output_reg,
             l2_reg=l2_reg,
             save_model_frequency=save_model_frequency,
-            patience=patience
+            patience=patience,
+            loss_func=loss_func
         )
         self.num_subnets = num_subnets
 
@@ -269,7 +278,8 @@ class MultiTaskNAMRegressor(NAMRegressor):
         output_reg: float = 0.2078,
         l2_reg: float = 0.0,
         save_model_frequency: int = 10,
-        patience: int = 60
+        patience: int = 60,
+        loss_func: Callable = None
     ) -> None:
         super(MultiTaskNAMRegressor, self).__init__(
             units_multiplier=units_multiplier,
@@ -288,7 +298,8 @@ class MultiTaskNAMRegressor(NAMRegressor):
             output_reg=output_reg,
             l2_reg=l2_reg,
             save_model_frequency=save_model_frequency,
-            patience=patience
+            patience=patience,
+            loss_func=loss_func
         )
         self.num_subnets = num_subnets
 

@@ -1,32 +1,16 @@
+from typing import Callable
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
 
-def bce_loss(logits: torch.Tensor, targets: torch.Tensor, weights: torch.tensor) -> torch.Tensor:
-    """Cross entropy loss for binary classification.
-
-    Args:
-      logits: NAM model outputs
-      targets: Binary class labels.
-
-    Returns:
-      Binary Cross-entropy loss between model predictions and the targets.
-    """
-    loss = F.binary_cross_entropy_with_logits(logits, targets, reduction='none')
+def weighted_loss(loss_func: Callable, logits: torch.Tensor, targets: torch.Tensor, weights: torch.tensor) -> torch.Tensor:
+    loss = loss_func(logits, targets, reduction='none')
     loss *= weights
     loss = torch.sum(loss, dim=0)
     loss = loss / torch.sum(weights, dim=0)
     return torch.mean(loss)
-
-
-def mse_loss(logits: torch.Tensor, targets: torch.Tensor, weights: torch.tensor) -> torch.Tensor:
-    """Mean squared error loss for regression."""
-    loss = F.mse_loss(logits, targets, reduction='none')
-    loss *= weights
-    loss = torch.sum(loss, dim=0)
-    loss = loss / torch.sum(weights, dim=0)
-    return loss
 
 
 def reg_penalty(fnn_out: torch.Tensor, model: nn.Module,
@@ -66,12 +50,14 @@ def reg_penalty(fnn_out: torch.Tensor, model: nn.Module,
     return reg_loss
 
 
-def make_penalized_loss_func(model, regression, output_regularization, l2_regularization):
-    loss_func = mse_loss if regression else bce_loss
+def make_penalized_loss_func(loss_func, model, regression, output_regularization, l2_regularization):
     def penalized_loss_func(logits, targets, weights, fnn_out):
-        loss = loss_func(logits, targets, weights)
+        loss = weighted_loss(loss_func, logits, targets, weights)
         loss += reg_penalty(fnn_out, model, output_regularization, l2_regularization)
         return loss
+
+    if not loss_func:
+        loss_func = F.mse_loss if regression else F.binary_cross_entropy_with_logits
     return penalized_loss_func
 
 
