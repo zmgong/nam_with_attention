@@ -1,5 +1,5 @@
 from sklearn.exceptions import NotFittedError
-from typing import Callable
+from typing import ArrayLike
 import torch
 
 from nam.data import NAMDataset
@@ -49,19 +49,24 @@ class NAMBase:
         self.criterion = None
         self._fitted = False
 
-    def initialize_model(self, X, y):
+    def _initialize_model(self, X, y):
         self.model = NAM(
             num_inputs=X.shape[1],
-            num_units=get_num_units(self.units_multiplier, self.num_basis_functions, self.dataset.X),
+            num_units=get_num_units(self.units_multiplier, self.num_basis_functions, X),
             dropout=self.dropout,
             feature_dropout=self.feature_dropout,
             hidden_sizes=self.hidden_sizes
         ) 
 
+    def partial_fit(self):
+        # TODO: Implement for warm start. Ask Rich about warm start + ensembling.
+        pass
+
     def fit(self, X, y, w=None) -> None:
+        # TODO: Don't store dataset in NAM object if possible
         self.dataset = NAMDataset(X, y, w)
         
-        self.initialize_model(X, y)
+        self._initialize_model(X, y)
 
         self.criterion = make_penalized_loss_func(self.model, self.regression, 
             self.output_reg, self.l2_reg)
@@ -86,14 +91,11 @@ class NAMBase:
         self.trainer.train()
         self._fitted = True
 
-    def predict_proba(self, X) -> None:
+    def predict(self, X) -> ArrayLike:
         if not self._fitted:
             raise NotFittedError('''This NAM instance is not fitted yet. Call \'fit\' 
                 with appropriate arguments before using this method.''')
-        return self.model.forward(X) 
-
-    def predict(self, X) -> None:
-        raise NotImplementedError
+        return self.model.forward(X).detach().cpu().numpy()
 
     def plot(self, feature_index) -> None:
         pass
@@ -141,11 +143,11 @@ class NAMClassifier(NAMBase):
         )
         self.regression = False
 
-    def predict_proba(self, X) -> None:
-        return torch.sigmoid(super().predict_proba(X))
+    def predict_proba(self, X) -> ArrayLike:
+        return torch.sigmoid(super().predict(X))
 
-    def predict(self, X) -> None:
-        return self.predict_proba(X) > 0.5
+    def predict(self, X) -> ArrayLike:
+        return self.predict_proba(X).round()
 
     
 class NAMRegressor(NAMBase):
@@ -190,9 +192,6 @@ class NAMRegressor(NAMBase):
         )
         self.regression = True
 
-    def predict_proba(self, X) -> None:
-        return super().predict_proba(X)
-
 
 class MultiTaskNAMClassifier(NAMClassifier):
     def __init__(
@@ -236,12 +235,66 @@ class MultiTaskNAMClassifier(NAMClassifier):
             patience=patience
         )
         self.num_subnets = num_subnets
-        self.regression = False
 
     def initialize_model(self, X, y):
         self.model = MultiTaskNAM(
             num_inputs=X.shape[1],
             num_units=get_num_units(self.units_multiplier, self.num_basis_functions, self.dataset.X),
+            num_subnets=self.num_subnets,
+            num_tasks=y.shape[1],
+            dropout=self.dropout,
+            feature_dropout=self.feature_dropout,
+            hidden_sizes=self.hidden_sizes
+        )
+
+
+class MultiTaskNAMRegressor(NAMRegressor):
+    def __init__(
+        self,
+        units_multiplier: int = 2,
+        num_basis_functions: int = 64,
+        hidden_sizes: list = [64, 32],
+        num_subnets: int = 2,
+        dropout: float = 0.1,
+        feature_dropout: float = 0.05, 
+        batch_size: int = 1024,
+        num_workers: int = 0,
+        num_epochs: int = 1000,
+        log_dir: str = None,
+        val_split: float = 0.15,
+        device: str = 'cpu',
+        lr: float = 0.02082,
+        decay_rate: float = 0.0,
+        output_reg: float = 0.2078,
+        l2_reg: float = 0.0,
+        save_model_frequency: int = 10,
+        patience: int = 60
+    ) -> None:
+        super(MultiTaskNAMRegressor, self).__init__(
+            units_multiplier=units_multiplier,
+            num_basis_functions=num_basis_functions,
+            hidden_sizes=hidden_sizes,
+            dropout=dropout,
+            feature_dropout=feature_dropout,
+            batch_size=batch_size,
+            num_workers=num_workers,
+            num_epochs=num_epochs,
+            log_dir=log_dir,
+            val_split=val_split,
+            device=device,
+            lr=lr,
+            decay_rate=decay_rate,
+            output_reg=output_reg,
+            l2_reg=l2_reg,
+            save_model_frequency=save_model_frequency,
+            patience=patience
+        )
+        self.num_subnets = num_subnets
+
+    def initialize_model(self, X, y):
+        self.model = MultiTaskNAM(
+            num_inputs=X.shape[1],
+            num_units=get_num_units(self.units_multiplier, self.num_basis_functions, X),
             num_subnets=self.num_subnets,
             num_tasks=y.shape[1],
             dropout=self.dropout,
