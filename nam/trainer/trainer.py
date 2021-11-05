@@ -1,10 +1,12 @@
 import gc
+import os
 from re import T
 from types import SimpleNamespace
 from typing import Callable, Mapping
 from typing import Sequence
 
 from ignite.contrib.metrics import ROC_AUC
+from sklearn.model_selection import ShuffleSplit, StratifiedShuffleSplit
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -12,14 +14,14 @@ from tqdm.autonotebook import tqdm
 
 from nam.models.saver import Checkpointer
 from nam.utils.loggers import TensorBoardLogger
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Subset
 from torch.utils.data import random_split
 
 
 class Trainer:
 
     def __init__(self, 
-        model: Sequence[nn.Module], 
+        models: Sequence[nn.Module], 
         dataset: torch.utils.data.Dataset,
         criterion: Callable,
         batch_size: int = 1024,
@@ -32,9 +34,12 @@ class Trainer:
         lr: float = 0.02082,
         decay_rate: float = 0.0,
         save_model_frequency: int = 0,
-        patience: int = 40
+        patience: int = 40,
+        regression: bool = True,
+        num_learners: int = 1,
+        random_state: int = 0
     ) -> None:
-        self.model = model.to(device)
+        self.models = [model.to(device) for model in models]
         self.dataset = dataset
         self.batch_size = batch_size
         self.num_workers = num_workers
@@ -44,21 +49,21 @@ class Trainer:
         self.decay_rate = decay_rate
         self.save_model_frequency = save_model_frequency
         self.patience = patience
+        self.regression = regression
+        self.num_learners = num_learners
+        self.random_state = random_state
 
 
-        self.optimizer = torch.optim.Adam(self.model.parameters(),
-                                          lr=self.lr,
-                                          weight_decay=self.decay_rate)
-        self.scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer,
-                                                gamma=0.995,
-                                                step_size=1)
+        # self.optimizer = torch.optim.Adam(self.model.parameters(),
+        #                                   lr=self.lr,
+        #                                   weight_decay=self.decay_rate)
+        # self.scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer,
+        #                                         gamma=0.995,
+        #                                         step_size=1)
 
         self.log_dir = log_dir
         if not self.log_dir:
             self.log_dir = 'output'
-        self.writer = TensorBoardLogger(log_dir=self.log_dir)
-        self.checkpointer = Checkpointer(model=model, log_dir=self.log_dir)
-        self.best_checkpoint = None
 
         self.val_split = val_split
         self.test_split = test_split
@@ -91,7 +96,8 @@ class Trainer:
             self.test_dl = DataLoader(test_subset, batch_size=self.batch_size, 
                 shuffle=False, num_workers=self.num_workers)
 
-    def train_step(self, batch: torch.Tensor) -> torch.Tensor:
+    def train_step(self, batch: torch.Tensor, model: nn.Module, 
+                   optimizer: optim.Optimizer) -> torch.Tensor:
         """Performs a single gradient-descent optimization step."""
         features, targets, weights = batch
         features = features.to(self.device)
@@ -99,19 +105,19 @@ class Trainer:
         weights = weights.to(self.device)
 
         # Resets optimizer's gradients.
-        self.optimizer.zero_grad()
+        optimizer.zero_grad()
 
         # Forward pass from the model.
-        predictions, fnn_out = self.model(features)
+        predictions, fnn_out = model(features)
 
-        loss = self.criterion(predictions, targets, weights, fnn_out)
+        loss = self.criterion(predictions, targets, weights, fnn_out, model)
         self.metric_train.update((predictions, targets))
 
         # Backward pass.
         loss.backward()
 
         # Performs a gradient descent step.
-        self.optimizer.step()
+        optimizer.step()
 
         return loss
 
@@ -124,7 +130,7 @@ class Trainer:
         with tqdm(dataloader, leave=False) as pbar:
             for batch in pbar:
                 # Performs a gradient-descent step.
-                step_loss = self.train_step(batch)
+                step_loss = self.train_step(batch, model, optimizer)
                 loss += step_loss
 
         metric = self.metric_train.compute()
@@ -140,10 +146,10 @@ class Trainer:
         weights = weights.to(self.device)
 
         # Forward pass from the model.
-        predictions, fnn_out = self.model(features)
+        predictions, fnn_out = model(features)
 
         # Calculates loss on mini-batch.
-        loss = self.criterion(predictions, targets, weights, fnn_out)
+        loss = self.criterion(predictions, targets, weights, fnn_out, model)
         self.metric_val.update((predictions, targets))
 
         return loss
@@ -164,29 +170,64 @@ class Trainer:
 
         return loss / len(dataloader), metric
 
-    def train(self):
+    def train_ensemble(self):
+        if self.regression:
+            ss = ShuffleSplit(n_splits=self.num_learners, 
+                test_size=self.val_split, random_state=self.random_state)
+        else:
+            ss = StratifiedShuffleSplit(n_splits=self.num_learners, 
+                test_size=self.val_split, random_state=self.random_state)
+
+        # TODO: Add parallelism for cpu
+        for i, (train_ind, val_ind) in enumerate(ss.split(self.dataset.X, self.dataset.y)):
+            train_subset = Subset(self.dataset, train_ind)
+            val_subset = Subset(self.dataset, val_ind)
+            
+            train_dl = DataLoader(train_subset, batch_size=self.batch_size, 
+                shuffle=True, num_workers=self.num_workers)
+
+            val_dl = DataLoader(val_subset, batch_size=self.batch_size, 
+                shuffle=False, num_workers=self.num_workers)
+
+            log_subdir = os.path.join(self.log_dir, str(i))
+            writer = TensorBoardLogger(log_dir=log_subdir)
+            checkpointer = Checkpointer(model=self.models[i], log_dir=log_subdir)
+
+            optimizer = torch.optim.Adam(self.models[i].parameters(),
+                                         lr=self.lr,
+                                         weight_decay=self.decay_rate)
+            
+            scheduler = torch.optim.lr_scheduler.StepLR(optimizer,
+                                                gamma=0.995,
+                                                step_size=1)
+
+            self.train(i, train_dl, val_dl, optimizer, scheduler, writer, checkpointer)
+
+    def train(self, model_index, train_dl, val_dl, optimizer, scheduler, writer, checkpointer):
         """Train the model for a specified number of epochs."""
         num_epochs = self.num_epochs
         best_loss = -float('inf')
+        best_checkpoint = -1
         epochs_since_best = 0
+        model = self.models[model_index]
 
         with tqdm(range(num_epochs)) as pbar_epoch:
             for epoch in pbar_epoch:
                 # Trains model on whole training dataset, and writes on `TensorBoard`.
-                loss_train, metric_train = self.train_epoch(self.model, self.optimizer, self.train_dl)
-                self.writer.write({
+                loss_train, metric_train = self.train_epoch(model, optimizer, train_dl)
+                writer.write({
                     "loss_train_epoch": loss_train.detach().cpu().numpy().item(),
                     f"{self.metric_name}_train_epoch": metric_train,
                 })
 
                 # Evaluates model on whole validation dataset, and writes on `TensorBoard`.
-                loss_val, metric_val = self.evaluate_epoch(self.model, self.val_dl)
-                self.writer.write({
+                loss_val, metric_val = self.evaluate_epoch(model, val_dl)
+                writer.write({
                     "loss_val_epoch": loss_val.detach().cpu().numpy().item(),
                     f"{self.metric_name}_val_epoch": metric_val,
                 })
 
-                self.scheduler.step()
+                scheduler.step()
 
                 # Updates progress bar description.
                 pbar_epoch.set_description(f"""Epoch({epoch}):
@@ -196,7 +237,7 @@ class Trainer:
 
                 # Checkpoints model weights.
                 if self.save_model_frequency > 0 and epoch % self.save_model_frequency == 0:
-                    self.checkpointer.save(epoch)
+                    checkpointer.save(epoch)
 
                 # Save best checkpoint for early stopping
                 if self.patience > 0 and metric_val > best_loss:#loss_val < best_loss:
@@ -204,42 +245,42 @@ class Trainer:
                     best_loss = metric_val
                     # best_loss = loss_val
                     epochs_since_best = 0
-                    self.checkpointer.save(epoch)
-                    self.best_checkpoint = epoch
+                    checkpointer.save(epoch)
+                    best_checkpoint = epoch
 
                 # Stop training if early stopping patience exceeded
                 epochs_since_best += 1
                 if self.patience > 0 and epochs_since_best > self.patience:
-                    self.model = self.checkpointer.load(self.best_checkpoint)
+                    self.models[model_index] = checkpointer.load(best_checkpoint)
                     break
 
-    def test(self):
-        """Evaluate the model on the test set."""
-        if not self.test_split:
-            # TODO: Find correct exception to throw here.
-            raise Exception() 
+    # def test(self):
+    #     """Evaluate the model on the test set."""
+    #     if not self.test_split:
+    #         # TODO: Find correct exception to throw here.
+    #         raise Exception() 
         
-        num_epochs = 1
-        with tqdm(range(num_epochs)) as pbar_epoch:
-            for epoch in pbar_epoch:
-                # Evaluates model on whole test set, and writes on `TensorBoard`.
-                loss_test, metrics_test = self.evaluate_epoch(self.model, self.test_dl)
-                self.writer.write({
-                    "loss_test_epoch": loss_test.detach().cpu().numpy().item(),
-                    f"{self.metric_name}_test_epoch": metrics_test,
-                })
+    #     num_epochs = 1
+    #     with tqdm(range(num_epochs)) as pbar_epoch:
+    #         for epoch in pbar_epoch:
+    #             # Evaluates model on whole test set, and writes on `TensorBoard`.
+    #             loss_test, metrics_test = self.evaluate_epoch(self.model, self.test_dl)
+    #             self.writer.write({
+    #                 "loss_test_epoch": loss_test.detach().cpu().numpy().item(),
+    #                 f"{self.metric_name}_test_epoch": metrics_test,
+    #             })
 
-                # Updates progress bar description.
-                pbar_epoch.set_description(f"""Epoch({epoch}):
-                    Test Loss: {loss_test.detach().cpu().numpy().item():.3f} |
-                    Test {self.metric_name}: {metrics_test:.3f}""")
+    #             # Updates progress bar description.
+    #             pbar_epoch.set_description(f"""Epoch({epoch}):
+    #                 Test Loss: {loss_test.detach().cpu().numpy().item():.3f} |
+    #                 Test {self.metric_name}: {metrics_test:.3f}""")
 
     def close(self):
         del self.dataset
-        del self.train_dl
-        del self.val_dl
-        if self.test_dl:
-            del self.test_dl
+        # del self.train_dl
+        # del self.val_dl
+        # if self.test_dl:
+        #     del self.test_dl
         
         gc.collect()
         return

@@ -50,8 +50,8 @@ def reg_penalty(fnn_out: torch.Tensor, model: nn.Module,
     return reg_loss
 
 
-def make_penalized_loss_func(loss_func, model, regression, output_regularization, l2_regularization):
-    def penalized_loss_func(logits, targets, weights, fnn_out):
+def make_penalized_loss_func(loss_func, regression, output_regularization, l2_regularization):
+    def penalized_loss_func(logits, targets, weights, fnn_out, model):
         loss = weighted_loss(loss_func, logits, targets, weights)
         loss += reg_penalty(fnn_out, model, output_regularization, l2_regularization)
         return loss
