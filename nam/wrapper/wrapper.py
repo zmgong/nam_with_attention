@@ -1,4 +1,6 @@
 from typing import Callable
+
+import numpy as np
 from numpy.typing import ArrayLike
 from sklearn.exceptions import NotFittedError
 import torch
@@ -29,7 +31,9 @@ class NAMBase:
         l2_reg: float = 0.0,
         save_model_frequency: int = 10,
         patience: int = 60,
-        loss_func: Callable = None
+        loss_func: Callable = None,
+        num_learners: int = 1,
+        random_state: int = 0
     ) -> None:
         self.units_multiplier = units_multiplier
         self.num_basis_functions = num_basis_functions
@@ -49,17 +53,21 @@ class NAMBase:
         self.save_model_frequency = save_model_frequency
         self.patience = patience
         self.loss_func = loss_func
+        self.num_learners = num_learners
+        self.random_state = random_state
 
         self._fitted = False
 
-    def _initialize_model(self, X, y):
-        self.model = NAM(
-            num_inputs=X.shape[1],
-            num_units=get_num_units(self.units_multiplier, self.num_basis_functions, X),
-            dropout=self.dropout,
-            feature_dropout=self.feature_dropout,
-            hidden_sizes=self.hidden_sizes
-        ) 
+    def _initialize_models(self, X, y):
+        self.num_tasks = y.shape[1]
+        self.models = [
+            NAM(num_inputs=X.shape[1],
+                num_units=get_num_units(self.units_multiplier, self.num_basis_functions, X),
+                dropout=self.dropout,
+                feature_dropout=self.feature_dropout,
+                hidden_sizes=self.hidden_sizes)
+            for _ in range(self.num_learners)
+        ] 
 
     def partial_fit(self):
         # TODO: Implement for warm start. Ask Rich about warm start + ensembling.
@@ -69,13 +77,13 @@ class NAMBase:
         # TODO: Don't store dataset in NAM object if possible
         dataset = NAMDataset(X, y, w)
         
-        self._initialize_model(X, y)
+        self._initialize_models(X, y)
 
-        self.criterion = make_penalized_loss_func(self.loss_func, self.model, 
+        self.criterion = make_penalized_loss_func(self.loss_func, 
             self.regression, self.output_reg, self.l2_reg)
 
         self.trainer = Trainer(
-            model=self.model,
+            models=self.models,
             dataset=dataset,
             batch_size=self.batch_size,
             num_workers=self.num_workers,
@@ -88,10 +96,13 @@ class NAMBase:
             decay_rate=self.decay_rate,
             save_model_frequency=self.save_model_frequency,
             patience=self.patience,
-            criterion=self.criterion
+            criterion=self.criterion,
+            regression=self.regression,
+            num_learners=self.num_learners,
+            random_state=self.random_state
         )
         
-        self.trainer.train()
+        self.trainer.train_ensemble()
         self.trainer.close()
         self._fitted = True
 
@@ -99,7 +110,11 @@ class NAMBase:
         if not self._fitted:
             raise NotFittedError('''This NAM instance is not fitted yet. Call \'fit\' 
                 with appropriate arguments before using this method.''')
-        return self.model.forward(X).detach().cpu().numpy()
+        
+        prediction = np.zeros((X.shape[0], self.num_tasks))
+        for model in self.models:
+            prediction += model.forward(X).detach().cpu().numpy()
+        return prediction
 
     def plot(self, feature_index) -> None:
         pass
@@ -125,7 +140,8 @@ class NAMClassifier(NAMBase):
         l2_reg: float = 0.0,
         save_model_frequency: int = 10,
         patience: int = 60,
-        loss_func: Callable = None
+        loss_func: Callable = None,
+        num_learners: int = 1
     ) -> None:
         super(NAMClassifier, self).__init__(
             units_multiplier=units_multiplier,
@@ -145,7 +161,8 @@ class NAMClassifier(NAMBase):
             l2_reg=l2_reg,
             save_model_frequency=save_model_frequency,
             patience=patience,
-            loss_func=loss_func
+            loss_func=loss_func,
+            num_learners=num_learners
         )
         self.regression = False
 
@@ -176,7 +193,8 @@ class NAMRegressor(NAMBase):
         l2_reg: float = 0.0,
         save_model_frequency: int = 10,
         patience: int = 60,
-        loss_func: Callable = None
+        loss_func: Callable = None,
+        num_learners: int = 1
     ) -> None:
         super(NAMRegressor, self).__init__(
             units_multiplier=units_multiplier,
@@ -196,7 +214,8 @@ class NAMRegressor(NAMBase):
             l2_reg=l2_reg,
             save_model_frequency=save_model_frequency,
             patience=patience,
-            loss_func=loss_func
+            loss_func=loss_func,
+            num_learners=num_learners
         )
         self.regression = True
 
@@ -222,7 +241,8 @@ class MultiTaskNAMClassifier(NAMClassifier):
         l2_reg: float = 0.0,
         save_model_frequency: int = 10,
         patience: int = 60,
-        loss_func: Callable = None
+        loss_func: Callable = None,
+        num_learners: int = 1
     ) -> None:
         super(MultiTaskNAMClassifier, self).__init__(
             units_multiplier=units_multiplier,
@@ -242,20 +262,22 @@ class MultiTaskNAMClassifier(NAMClassifier):
             l2_reg=l2_reg,
             save_model_frequency=save_model_frequency,
             patience=patience,
-            loss_func=loss_func
+            loss_func=loss_func,
+            num_learners=num_learners
         )
         self.num_subnets = num_subnets
 
-    def _initialize_model(self, X, y):
-        self.model = MultiTaskNAM(
-            num_inputs=X.shape[1],
-            num_units=get_num_units(self.units_multiplier, self.num_basis_functions, X),
-            num_subnets=self.num_subnets,
-            num_tasks=y.shape[1],
-            dropout=self.dropout,
-            feature_dropout=self.feature_dropout,
-            hidden_sizes=self.hidden_sizes
-        )
+    def _initialize_models(self, X, y):
+        self.models = [
+            MultiTaskNAM(num_inputs=X.shape[1],
+                num_units=get_num_units(self.units_multiplier, self.num_basis_functions, X),
+                num_subnets=self.num_subnets,
+                num_tasks=y.shape[1],
+                dropout=self.dropout,
+                feature_dropout=self.feature_dropout,
+                hidden_sizes=self.hidden_sizes)
+            for _ in range(self.num_learners)
+        ]
 
 
 class MultiTaskNAMRegressor(NAMRegressor):
@@ -279,7 +301,8 @@ class MultiTaskNAMRegressor(NAMRegressor):
         l2_reg: float = 0.0,
         save_model_frequency: int = 10,
         patience: int = 60,
-        loss_func: Callable = None
+        loss_func: Callable = None,
+        num_learners: int = 1
     ) -> None:
         super(MultiTaskNAMRegressor, self).__init__(
             units_multiplier=units_multiplier,
@@ -299,17 +322,19 @@ class MultiTaskNAMRegressor(NAMRegressor):
             l2_reg=l2_reg,
             save_model_frequency=save_model_frequency,
             patience=patience,
-            loss_func=loss_func
+            loss_func=loss_func,
+            num_learners=num_learners
         )
         self.num_subnets = num_subnets
 
-    def _initialize_model(self, X, y):
-        self.model = MultiTaskNAM(
-            num_inputs=X.shape[1],
-            num_units=get_num_units(self.units_multiplier, self.num_basis_functions, X),
-            num_subnets=self.num_subnets,
-            num_tasks=y.shape[1],
-            dropout=self.dropout,
-            feature_dropout=self.feature_dropout,
-            hidden_sizes=self.hidden_sizes
-        )
+    def _initialize_models(self, X, y):
+        self.models = [
+            MultiTaskNAM(num_inputs=X.shape[1],
+                num_units=get_num_units(self.units_multiplier, self.num_basis_functions, X),
+                num_subnets=self.num_subnets,
+                num_tasks=y.shape[1],
+                dropout=self.dropout,
+                feature_dropout=self.feature_dropout,
+                hidden_sizes=self.hidden_sizes)
+            for _ in range(self.num_learners)
+        ]
