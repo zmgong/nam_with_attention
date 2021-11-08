@@ -2,6 +2,7 @@ from typing import Callable
 
 import numpy as np
 from numpy.typing import ArrayLike
+from scipy.special import expit
 from sklearn.exceptions import NotFittedError
 import torch
 
@@ -59,7 +60,8 @@ class NAMBase:
         self._fitted = False
 
     def _initialize_models(self, X, y):
-        self.num_tasks = y.shape[1]
+        self.num_tasks = y.shape[1] if len(y.shape) > 1 else 1
+
         self.models = [
             NAM(num_inputs=X.shape[1],
                 num_units=get_num_units(self.units_multiplier, self.num_basis_functions, X),
@@ -111,10 +113,14 @@ class NAMBase:
             raise NotFittedError('''This NAM instance is not fitted yet. Call \'fit\' 
                 with appropriate arguments before using this method.''')
         
-        prediction = np.zeros((X.shape[0], self.num_tasks))
+        prediction = np.zeros((X.shape[0],))
+        if self.num_tasks > 1:
+            prediction = np.zeros((X.shape[0], self.num_tasks))
+
         for model in self.models:
-            prediction += model.forward(X).detach().cpu().numpy()
-        return prediction
+            preds, _ = model.forward(X)
+            prediction += preds.detach().cpu().numpy()
+        return prediction / self.num_learners
 
     def plot(self, feature_index) -> None:
         pass
@@ -167,7 +173,7 @@ class NAMClassifier(NAMBase):
         self.regression = False
 
     def predict_proba(self, X) -> ArrayLike:
-        return torch.sigmoid(super().predict(X))
+        return expit(super().predict(X))
 
     def predict(self, X) -> ArrayLike:
         return self.predict_proba(X).round()
