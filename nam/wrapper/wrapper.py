@@ -2,7 +2,7 @@ from typing import Callable
 
 import numpy as np
 from numpy.typing import ArrayLike
-from scipy.special import expit
+import scipy
 from sklearn.exceptions import NotFittedError
 import torch
 
@@ -61,9 +61,9 @@ class NAMBase:
 
     def _initialize_models(self, X, y):
         self.num_tasks = y.shape[1] if len(y.shape) > 1 else 1
-
+        self.num_inputs = X.shape[1]
         self.models = [
-            NAM(num_inputs=X.shape[1],
+            NAM(num_inputs=self.num_inputs,
                 num_units=get_num_units(self.units_multiplier, self.num_basis_functions, X),
                 dropout=self.dropout,
                 feature_dropout=self.feature_dropout,
@@ -123,7 +123,36 @@ class NAMBase:
         return prediction / self.num_learners
 
     def plot(self, feature_index) -> None:
-        pass
+        num_samples = 1000
+        X = np.zeros((num_samples, self.num_inputs))
+        X[:, feature_index] = np.linspace(-1.0, 1.0, num_samples)
+        
+        feature_outputs = []
+        for model in self.models:
+            # (examples, tasks, features)
+            _, fnns_out = model.forward(torch.tensor(X, dtype=torch.float32))
+            if self.num_tasks == 1:
+                fnns_out = fnns_out.unsqueeze(dim=1)
+            # (examples, tasks)
+            feature_outputs.append(fnns_out[:, :, feature_index].detach().cpu().numpy())
+
+        # (learners, examples, tasks)
+        feature_outputs = np.stack(feature_outputs, axis=0)
+        # (examples, tasks)
+        y = np.mean(feature_outputs, axis=0)
+        conf_int = self._get_confidence_interval(feature_outputs)
+
+        if self.num_tasks ==1:
+            y, conf_int = y.squeeze(1), conf_int.squeeze(1)
+        
+        return {'x': X[:, feature_index], 'y': y, 'conf_int': conf_int}
+
+    @staticmethod
+    def _get_confidence_interval(data, axis=0, confidence=0.95):
+        n = len(data)
+        se = scipy.stats.sem(data, axis=axis)
+        h = se * scipy.stats.t.ppf((1 + confidence) / 2., n-1)
+        return h
 
 
 class NAMClassifier(NAMBase):
@@ -173,7 +202,7 @@ class NAMClassifier(NAMBase):
         self.regression = False
 
     def predict_proba(self, X) -> ArrayLike:
-        return expit(super().predict(X))
+        return scipy.special.expit(super().predict(X))
 
     def predict(self, X) -> ArrayLike:
         return self.predict_proba(X).round()
@@ -274,6 +303,8 @@ class MultiTaskNAMClassifier(NAMClassifier):
         self.num_subnets = num_subnets
 
     def _initialize_models(self, X, y):
+        self.num_inputs = X.shape[1]
+        self.num_tasks = y.shape[1] if len(y.shape) > 1 else 1
         self.models = [
             MultiTaskNAM(num_inputs=X.shape[1],
                 num_units=get_num_units(self.units_multiplier, self.num_basis_functions, X),
@@ -334,6 +365,8 @@ class MultiTaskNAMRegressor(NAMRegressor):
         self.num_subnets = num_subnets
 
     def _initialize_models(self, X, y):
+        self.num_inputs = X.shape[1]
+        self.num_tasks = y.shape[1] if len(y.shape) > 1 else 1
         self.models = [
             MultiTaskNAM(num_inputs=X.shape[1],
                 num_units=get_num_units(self.units_multiplier, self.num_basis_functions, X),
