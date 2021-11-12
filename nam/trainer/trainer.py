@@ -38,6 +38,8 @@ class Trainer:
         decay_rate: float = 0.0,
         save_model_frequency: int = 0,
         patience: int = 40,
+        monitor_loss: bool = True,
+        early_stop_mode: str = 'min',
         regression: bool = True,
         num_learners: int = 1,
         random_state: int = 0
@@ -54,6 +56,8 @@ class Trainer:
         self.decay_rate = decay_rate
         self.save_model_frequency = save_model_frequency
         self.patience = patience
+        self.monitor_loss = monitor_loss
+        self.early_stop_mode = early_stop_mode
         self.regression = regression
         self.num_learners = num_learners
         self.random_state = random_state
@@ -198,7 +202,7 @@ class Trainer:
     def train(self, model_index, train_dl, val_dl, optimizer, scheduler, writer, checkpointer, metric):
         """Train the model for a specified number of epochs."""
         num_epochs = self.num_epochs
-        best_loss = -float('inf')
+        best_loss_or_metric = float('inf')
         best_checkpoint = -1
         epochs_since_best = 0
         model = self.models[model_index]
@@ -232,10 +236,12 @@ class Trainer:
                     checkpointer.save(epoch)
 
                 # Save best checkpoint for early stopping
-                if self.patience > 0 and metric_val > best_loss:#loss_val < best_loss:
-                    # TODO: support early stopping on both loss and metric
-                    best_loss = metric_val
-                    # best_loss = loss_val
+                loss_or_metric = loss_val if self.monitor_loss else metric_val
+                if self.early_stop_mode == 'max':
+                    loss_or_metric = -1 * loss_or_metric
+
+                if self.patience > 0 and loss_or_metric < best_loss_or_metric:
+                    best_loss_or_metric = loss_or_metric
                     epochs_since_best = 0
                     checkpointer.save(epoch)
                     best_checkpoint = epoch

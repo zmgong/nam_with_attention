@@ -32,6 +32,8 @@ class NAMBase:
         l2_reg: float = 0.0,
         save_model_frequency: int = 10,
         patience: int = 60,
+        monitor_loss: bool = True,
+        early_stop_mode: str = 'min',
         loss_func: Callable = None,
         metric: str = None,
         num_learners: int = 1,
@@ -54,6 +56,8 @@ class NAMBase:
         self.l2_reg = l2_reg
         self.save_model_frequency = save_model_frequency
         self.patience = patience
+        self.monitor_loss = monitor_loss
+        self.early_stop_mode = early_stop_mode
         self.loss_func = loss_func
         self.metric = metric
         self.num_learners = num_learners
@@ -101,6 +105,8 @@ class NAMBase:
             decay_rate=self.decay_rate,
             save_model_frequency=self.save_model_frequency,
             patience=self.patience,
+            monitor_loss=self.monitor_loss,
+            early_stop_mode=self.early_stop_mode,
             criterion=self.criterion,
             regression=self.regression,
             num_learners=self.num_learners,
@@ -178,6 +184,8 @@ class NAMClassifier(NAMBase):
         l2_reg: float = 0.0,
         save_model_frequency: int = 10,
         patience: int = 60,
+        monitor_loss: bool = True,
+        early_stop_mode: str = 'min',
         loss_func: Callable = None,
         metric: str = None,
         num_learners: int = 1
@@ -200,6 +208,8 @@ class NAMClassifier(NAMBase):
             l2_reg=l2_reg,
             save_model_frequency=save_model_frequency,
             patience=patience,
+            monitor_loss=monitor_loss,
+            early_stop_mode=early_stop_mode,
             loss_func=loss_func,
             metric=metric,
             num_learners=num_learners
@@ -234,6 +244,8 @@ class NAMRegressor(NAMBase):
         l2_reg: float = 0.0,
         save_model_frequency: int = 10,
         patience: int = 60,
+        monitor_loss: bool = True,
+        early_stop_mode: str = 'min',
         loss_func: Callable = None,
         metric: str = None,
         num_learners: int = 1
@@ -256,6 +268,8 @@ class NAMRegressor(NAMBase):
             l2_reg=l2_reg,
             save_model_frequency=save_model_frequency,
             patience=patience,
+            monitor_loss=monitor_loss,
+            early_stop_mode=early_stop_mode,
             loss_func=loss_func,
             metric=metric,
             num_learners=num_learners
@@ -284,6 +298,8 @@ class MultiTaskNAMClassifier(NAMClassifier):
         l2_reg: float = 0.0,
         save_model_frequency: int = 10,
         patience: int = 60,
+        monitor_loss: bool = True,
+        early_stop_mode: str = 'min',
         loss_func: Callable = None,
         metric: str = None,
         num_learners: int = 1
@@ -306,6 +322,8 @@ class MultiTaskNAMClassifier(NAMClassifier):
             l2_reg=l2_reg,
             save_model_frequency=save_model_frequency,
             patience=patience,
+            monitor_loss=monitor_loss,
+            early_stop_mode=early_stop_mode,
             loss_func=loss_func,
             metric=metric,
             num_learners=num_learners
@@ -348,6 +366,8 @@ class MultiTaskNAMRegressor(NAMRegressor):
         l2_reg: float = 0.0,
         save_model_frequency: int = 10,
         patience: int = 60,
+        monitor_loss: bool = True,
+        early_stop_mode: str = 'min',
         loss_func: Callable = None,
         metric: str = None,
         num_learners: int = 1
@@ -370,6 +390,8 @@ class MultiTaskNAMRegressor(NAMRegressor):
             l2_reg=l2_reg,
             save_model_frequency=save_model_frequency,
             patience=patience,
+            monitor_loss=monitor_loss,
+            early_stop_mode=early_stop_mode,
             loss_func=loss_func,
             metric=metric,
             num_learners=num_learners
