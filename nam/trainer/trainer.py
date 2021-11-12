@@ -261,7 +261,7 @@ class Trainer:
         if self.metric_name.lower() == 'auroc':
             return ROC_AUC(lambda p: (torch.sigmoid(p[0]), p[1]))
         # TODO: Come up with a wrapper scheme to handle necessary data
-        # transformations for different metrics, e.g. conver predictions
+        # transformations for different metrics, e.g. convert predictions
         # to 1's and 0's for accuracy.
         if self.metric_name.lower() == 'accuracy':
             return Accuracy(lambda p: ((p[0] > 0).type(torch.int32), p[1]))
