@@ -33,6 +33,7 @@ class NAMBase:
         save_model_frequency: int = 10,
         patience: int = 60,
         loss_func: Callable = None,
+        metric: str = None,
         num_learners: int = 1,
         random_state: int = 0
     ) -> None:
@@ -54,6 +55,7 @@ class NAMBase:
         self.save_model_frequency = save_model_frequency
         self.patience = patience
         self.loss_func = loss_func
+        self.metric = metric
         self.num_learners = num_learners
         self.random_state = random_state
 
@@ -87,6 +89,7 @@ class NAMBase:
         self.trainer = Trainer(
             models=self.models,
             dataset=dataset,
+            metric=self.metric,
             batch_size=self.batch_size,
             num_workers=self.num_workers,
             num_epochs=self.num_epochs,
@@ -176,6 +179,7 @@ class NAMClassifier(NAMBase):
         save_model_frequency: int = 10,
         patience: int = 60,
         loss_func: Callable = None,
+        metric: str = None,
         num_learners: int = 1
     ) -> None:
         super(NAMClassifier, self).__init__(
@@ -197,12 +201,14 @@ class NAMClassifier(NAMBase):
             save_model_frequency=save_model_frequency,
             patience=patience,
             loss_func=loss_func,
+            metric=metric,
             num_learners=num_learners
         )
         self.regression = False
 
     def predict_proba(self, X) -> ArrayLike:
-        return scipy.special.expit(super().predict(X))
+        out = scipy.special.expit(super().predict(X))
+        return out
 
     def predict(self, X) -> ArrayLike:
         return self.predict_proba(X).round()
@@ -229,6 +235,7 @@ class NAMRegressor(NAMBase):
         save_model_frequency: int = 10,
         patience: int = 60,
         loss_func: Callable = None,
+        metric: str = None,
         num_learners: int = 1
     ) -> None:
         super(NAMRegressor, self).__init__(
@@ -250,6 +257,7 @@ class NAMRegressor(NAMBase):
             save_model_frequency=save_model_frequency,
             patience=patience,
             loss_func=loss_func,
+            metric=metric,
             num_learners=num_learners
         )
         self.regression = True
@@ -277,6 +285,7 @@ class MultiTaskNAMClassifier(NAMClassifier):
         save_model_frequency: int = 10,
         patience: int = 60,
         loss_func: Callable = None,
+        metric: str = None,
         num_learners: int = 1
     ) -> None:
         super(MultiTaskNAMClassifier, self).__init__(
@@ -298,6 +307,7 @@ class MultiTaskNAMClassifier(NAMClassifier):
             save_model_frequency=save_model_frequency,
             patience=patience,
             loss_func=loss_func,
+            metric=metric,
             num_learners=num_learners
         )
         self.num_subnets = num_subnets
@@ -339,6 +349,7 @@ class MultiTaskNAMRegressor(NAMRegressor):
         save_model_frequency: int = 10,
         patience: int = 60,
         loss_func: Callable = None,
+        metric: str = None,
         num_learners: int = 1
     ) -> None:
         super(MultiTaskNAMRegressor, self).__init__(
@@ -360,6 +371,7 @@ class MultiTaskNAMRegressor(NAMRegressor):
             save_model_frequency=save_model_frequency,
             patience=patience,
             loss_func=loss_func,
+            metric=metric,
             num_learners=num_learners
         )
         self.num_subnets = num_subnets

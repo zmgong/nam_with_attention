@@ -6,6 +6,8 @@ from typing import Callable, Mapping
 from typing import Sequence
 
 from ignite.contrib.metrics import ROC_AUC
+from ignite.metrics import Accuracy
+from ignite.metrics.epoch_metric import EpochMetric
 from sklearn.model_selection import ShuffleSplit, StratifiedShuffleSplit
 import torch
 import torch.nn as nn
@@ -24,6 +26,7 @@ class Trainer:
         models: Sequence[nn.Module], 
         dataset: torch.utils.data.Dataset,
         criterion: Callable,
+        metric: str,
         batch_size: int = 1024,
         num_workers: int = 0,
         num_epochs: int = 1000,
@@ -41,6 +44,8 @@ class Trainer:
     ) -> None:
         self.models = [model.to(device) for model in models]
         self.dataset = dataset
+        self.criterion = criterion
+        self.metric_name = metric.upper()
         self.batch_size = batch_size
         self.num_workers = num_workers
         self.num_epochs = num_epochs
@@ -53,27 +58,12 @@ class Trainer:
         self.num_learners = num_learners
         self.random_state = random_state
 
-
-        # self.optimizer = torch.optim.Adam(self.model.parameters(),
-        #                                   lr=self.lr,
-        #                                   weight_decay=self.decay_rate)
-        # self.scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer,
-        #                                         gamma=0.995,
-        #                                         step_size=1)
-
         self.log_dir = log_dir
         if not self.log_dir:
             self.log_dir = 'output'
 
         self.val_split = val_split
         self.test_split = test_split
-
-        self.criterion = criterion
-
-        output_transform_fn = lambda output: (torch.sigmoid(output[0]), output[1])
-        self.metric_train = ROC_AUC(output_transform_fn)
-        self.metric_val = ROC_AUC(output_transform_fn)
-        self.metric_name = 'AUROC'
 
         self.setup_dataloaders()
         
@@ -97,12 +87,9 @@ class Trainer:
                 shuffle=False, num_workers=self.num_workers)
 
     def train_step(self, batch: torch.Tensor, model: nn.Module, 
-                   optimizer: optim.Optimizer) -> torch.Tensor:
+                   optimizer: optim.Optimizer, metric: EpochMetric) -> torch.Tensor:
         """Performs a single gradient-descent optimization step."""
-        features, targets, weights = batch
-        features = features.to(self.device)
-        targets = targets.to(self.device)
-        weights = weights.to(self.device)
+        features, targets, weights = [t.to(self.device) for t in batch]
 
         # Resets optimizer's gradients.
         optimizer.zero_grad()
@@ -111,7 +98,7 @@ class Trainer:
         predictions, fnn_out = model(features)
 
         loss = self.criterion(predictions, targets, weights, fnn_out, model)
-        self.metric_train.update((predictions, targets))
+        self.update_metric(metric, predictions, targets, weights)
 
         # Backward pass.
         loss.backward()
@@ -122,7 +109,7 @@ class Trainer:
         return loss
 
     def train_epoch(self, model: nn.Module, optimizer: optim.Optimizer,
-                    dataloader: torch.utils.data.DataLoader) -> torch.Tensor:
+                    dataloader: torch.utils.data.DataLoader, metric: EpochMetric) -> torch.Tensor:
         """Performs an epoch of gradient descent optimization on
         `dataloader`."""
         model.train()
@@ -130,31 +117,32 @@ class Trainer:
         with tqdm(dataloader, leave=False) as pbar:
             for batch in pbar:
                 # Performs a gradient-descent step.
-                step_loss = self.train_step(batch, model, optimizer)
+                step_loss = self.train_step(batch, model, optimizer, metric)
                 loss += step_loss
 
-        metric = self.metric_train.compute()
-        self.metric_train.reset()
+        metric_train = None
+        if metric:
+            metric_train = metric.compute()
+            metric.reset()
 
-        return loss / len(dataloader), metric
+        return loss / len(dataloader), metric_train
 
-    def evaluate_step(self, model: nn.Module, batch: Mapping[str, torch.Tensor]) -> torch.Tensor:
+    def evaluate_step(self, model: nn.Module, batch: Mapping[str, torch.Tensor],
+                      metric: EpochMetric) -> torch.Tensor:
         """Evaluates `model` on a `batch`."""
-        features, targets, weights = batch
-        features = features.to(self.device)
-        targets = targets.to(self.device)
-        weights = weights.to(self.device)
+        features, targets, weights = [t.to(self.device) for t in batch]
 
         # Forward pass from the model.
         predictions, fnn_out = model(features)
 
         # Calculates loss on mini-batch.
         loss = self.criterion(predictions, targets, weights, fnn_out, model)
-        self.metric_val.update((predictions, targets))
+        self.update_metric(metric, predictions, targets, weights)
 
         return loss
 
-    def evaluate_epoch(self, model: nn.Module, dataloader: torch.utils.data.DataLoader) -> torch.Tensor:
+    def evaluate_epoch(self, model: nn.Module, dataloader: torch.utils.data.DataLoader,
+                       metric: EpochMetric) -> torch.Tensor:
         """Performs an evaluation of the `model` on the `dataloader`."""
         model.eval()
         loss = 0.0
@@ -162,13 +150,15 @@ class Trainer:
             for batch in pbar:
                 # Accumulates loss in dataset.
                 with torch.no_grad():
-                    step_loss = self.evaluate_step(model, batch)
+                    step_loss = self.evaluate_step(model, batch, metric)
                     loss += step_loss
 
-        metric = self.metric_val.compute()
-        self.metric_val.reset()
+        metric_val = None
+        if metric:
+            metric_val = metric.compute()
+            metric.reset()
 
-        return loss / len(dataloader), metric
+        return loss / len(dataloader), metric_val
 
     def train_ensemble(self):
         if self.regression:
@@ -201,9 +191,11 @@ class Trainer:
                                                 gamma=0.995,
                                                 step_size=1)
 
-            self.train(i, train_dl, val_dl, optimizer, scheduler, writer, checkpointer)
+            metric = self.create_metric()
 
-    def train(self, model_index, train_dl, val_dl, optimizer, scheduler, writer, checkpointer):
+            self.train(i, train_dl, val_dl, optimizer, scheduler, writer, checkpointer, metric)
+
+    def train(self, model_index, train_dl, val_dl, optimizer, scheduler, writer, checkpointer, metric):
         """Train the model for a specified number of epochs."""
         num_epochs = self.num_epochs
         best_loss = -float('inf')
@@ -214,26 +206,26 @@ class Trainer:
         with tqdm(range(num_epochs)) as pbar_epoch:
             for epoch in pbar_epoch:
                 # Trains model on whole training dataset, and writes on `TensorBoard`.
-                loss_train, metric_train = self.train_epoch(model, optimizer, train_dl)
-                writer.write({
-                    "loss_train_epoch": loss_train.detach().cpu().numpy().item(),
-                    f"{self.metric_name}_train_epoch": metric_train,
-                })
+                loss_train, metric_train = self.train_epoch(model, optimizer, train_dl, metric)
+                writer.write({"loss_train_epoch": loss_train.detach().cpu().numpy().item()})
+                if metric:
+                    writer.write({f"{self.metric_name}_train_epoch": metric_train})
 
                 # Evaluates model on whole validation dataset, and writes on `TensorBoard`.
-                loss_val, metric_val = self.evaluate_epoch(model, val_dl)
-                writer.write({
-                    "loss_val_epoch": loss_val.detach().cpu().numpy().item(),
-                    f"{self.metric_name}_val_epoch": metric_val,
-                })
+                loss_val, metric_val = self.evaluate_epoch(model, val_dl, metric)
+                writer.write({"loss_val_epoch": loss_val.detach().cpu().numpy().item()})
+                if metric:
+                    writer.write({f"{self.metric_name}_val_epoch": metric_val})
 
                 scheduler.step()
 
                 # Updates progress bar description.
-                pbar_epoch.set_description(f"""Epoch({epoch}):
+                desc = f"""Epoch({epoch}):
                     Training Loss: {loss_train.detach().cpu().numpy().item():.3f} |
-                    Validation Loss: {loss_val.detach().cpu().numpy().item():.3f} |
-                    {self.metric_name}: {metric_train:.3f}""")
+                    Validation Loss: {loss_val.detach().cpu().numpy().item():.3f}"""
+                if metric:    
+                    desc += f' | {self.metric_name}: {metric_train:.3f}'
+                pbar_epoch.set_description(desc)
 
                 # Checkpoints model weights.
                 if self.save_model_frequency > 0 and epoch % self.save_model_frequency == 0:
@@ -254,34 +246,25 @@ class Trainer:
                     self.models[model_index] = checkpointer.load(best_checkpoint)
                     break
 
-    # def test(self):
-    #     """Evaluate the model on the test set."""
-    #     if not self.test_split:
-    #         # TODO: Find correct exception to throw here.
-    #         raise Exception() 
-        
-    #     num_epochs = 1
-    #     with tqdm(range(num_epochs)) as pbar_epoch:
-    #         for epoch in pbar_epoch:
-    #             # Evaluates model on whole test set, and writes on `TensorBoard`.
-    #             loss_test, metrics_test = self.evaluate_epoch(self.model, self.test_dl)
-    #             self.writer.write({
-    #                 "loss_test_epoch": loss_test.detach().cpu().numpy().item(),
-    #                 f"{self.metric_name}_test_epoch": metrics_test,
-    #             })
-
-    #             # Updates progress bar description.
-    #             pbar_epoch.set_description(f"""Epoch({epoch}):
-    #                 Test Loss: {loss_test.detach().cpu().numpy().item():.3f} |
-    #                 Test {self.metric_name}: {metrics_test:.3f}""")
-
     def close(self):
         del self.dataset
-        # del self.train_dl
-        # del self.val_dl
-        # if self.test_dl:
-        #     del self.test_dl
-        
         gc.collect()
         return
     
+    def create_metric(self):
+        if self.metric_name.lower() == 'auroc':
+            return ROC_AUC(lambda p: (torch.sigmoid(p[0]), p[1]))
+        # TODO: Come up with a wrapper scheme to handle necessary data
+        # transformations for different metrics, e.g. conver predictions
+        # to 1's and 0's for accuracy.
+        if self.metric_name.lower() == 'accuracy':
+            return Accuracy(lambda p: ((p[0] > 0).type(torch.int32), p[1]))
+        
+        return None
+
+    def update_metric(self, metric, predictions, targets, weights):
+        if metric:
+            predictions, targets = predictions.view(-1), targets.view(-1)
+            indices = weights.view(-1) > 0
+            predictions, targets = predictions[indices], targets[indices]
+            metric.update((predictions, targets))
