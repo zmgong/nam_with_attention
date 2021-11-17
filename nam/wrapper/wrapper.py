@@ -1,3 +1,4 @@
+import random
 from typing import Callable
 
 import numpy as np
@@ -37,7 +38,7 @@ class NAMBase:
         loss_func: Callable = None,
         metric: str = None,
         num_learners: int = 1,
-        random_state: int = 0
+        random_state: int = 42
     ) -> None:
         self.units_multiplier = units_multiplier
         self.num_basis_functions = num_basis_functions
@@ -65,6 +66,12 @@ class NAMBase:
 
         self._fitted = False
 
+    def _set_random_state(self):
+        random.seed(self.random_state)
+        np.random.seed(self.random_state)
+        torch.manual_seed(self.random_state)
+        return
+    
     def _initialize_models(self, X, y):
         self.num_tasks = y.shape[1] if len(y.shape) > 1 else 1
         self.num_inputs = X.shape[1]
@@ -75,17 +82,18 @@ class NAMBase:
                 feature_dropout=self.feature_dropout,
                 hidden_sizes=self.hidden_sizes)
             for _ in range(self.num_learners)
-        ] 
+        ]
+        return
 
     def partial_fit(self):
         # TODO: Implement for warm start. Ask Rich about warm start + ensembling.
         pass
 
     def fit(self, X, y, w=None) -> None:
-        # TODO: Don't store dataset in NAM object if possible
-        dataset = NAMDataset(X, y, w)
-        
+        self._set_random_state()
         self._initialize_models(X, y)
+
+        dataset = NAMDataset(X, y, w)
 
         self.criterion = make_penalized_loss_func(self.loss_func, 
             self.regression, self.output_reg, self.l2_reg)

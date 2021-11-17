@@ -47,7 +47,7 @@ class Trainer:
         self.models = [model.to(device) for model in models]
         self.dataset = dataset
         self.criterion = criterion
-        self.metric_name = metric.upper()
+        self.metric_name = metric.upper() if metric else None
         self.batch_size = batch_size
         self.num_workers = num_workers
         self.num_epochs = num_epochs
@@ -259,7 +259,8 @@ class Trainer:
     
     def create_metric(self):
         if self.metric_name.lower() == 'auroc':
-            return ROC_AUC(lambda p: (torch.sigmoid(p[0]), p[1]))
+            # return ROC_AUC(lambda p: (torch.sigmoid(p[0]), p[1]))
+            return ROC_AUC()
         # TODO: Come up with a wrapper scheme to handle necessary data
         # transformations for different metrics, e.g. convert predictions
         # to 1's and 0's for accuracy.
