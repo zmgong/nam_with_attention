@@ -38,6 +38,7 @@ class NAMBase:
         loss_func: Callable = None,
         metric: str = None,
         num_learners: int = 1,
+        n_jobs: int = None,
         random_state: int = 42
     ) -> None:
         self.units_multiplier = units_multiplier
@@ -62,6 +63,7 @@ class NAMBase:
         self.loss_func = loss_func
         self.metric = metric
         self.num_learners = num_learners
+        self.n_jobs = n_jobs
         self.random_state = random_state
 
         self._fitted = False
@@ -75,14 +77,15 @@ class NAMBase:
     def _initialize_models(self, X, y):
         self.num_tasks = y.shape[1] if len(y.shape) > 1 else 1
         self.num_inputs = X.shape[1]
-        self.models = [
-            NAM(num_inputs=self.num_inputs,
+        for _ in range(self.num_learners):
+            model = NAM(num_inputs=self.num_inputs,
                 num_units=get_num_units(self.units_multiplier, self.num_basis_functions, X),
                 dropout=self.dropout,
                 feature_dropout=self.feature_dropout,
                 hidden_sizes=self.hidden_sizes)
-            for _ in range(self.num_learners)
-        ]
+            model.to(self.device)
+            self.models.append(model)
+        
         return
 
     def partial_fit(self):
@@ -119,11 +122,17 @@ class NAMBase:
             criterion=self.criterion,
             regression=self.regression,
             num_learners=self.num_learners,
+            n_jobs=self.n_jobs,
             random_state=self.random_state
         )
         
         self.trainer.train_ensemble()
         self.trainer.close()
+
+        # Move models to cpu so predictions can be made on cpu data
+        for model in self.models:
+            model.to('cpu')
+
         self._fitted = True
 
     def predict(self, X) -> ArrayLike:
@@ -197,7 +206,9 @@ class NAMClassifier(NAMBase):
         early_stop_mode: str = 'min',
         loss_func: Callable = None,
         metric: str = None,
-        num_learners: int = 1
+        num_learners: int = 1,
+        n_jobs: int = None,
+        random_state: int = 42
     ) -> None:
         super(NAMClassifier, self).__init__(
             units_multiplier=units_multiplier,
@@ -221,7 +232,9 @@ class NAMClassifier(NAMBase):
             early_stop_mode=early_stop_mode,
             loss_func=loss_func,
             metric=metric,
-            num_learners=num_learners
+            num_learners=num_learners,
+            n_jobs=n_jobs,
+            random_state=random_state
         )
         self.regression = False
 
@@ -257,7 +270,9 @@ class NAMRegressor(NAMBase):
         early_stop_mode: str = 'min',
         loss_func: Callable = None,
         metric: str = None,
-        num_learners: int = 1
+        num_learners: int = 1,
+        n_jobs: int = None,
+        random_state: int = 42
     ) -> None:
         super(NAMRegressor, self).__init__(
             units_multiplier=units_multiplier,
@@ -281,7 +296,9 @@ class NAMRegressor(NAMBase):
             early_stop_mode=early_stop_mode,
             loss_func=loss_func,
             metric=metric,
-            num_learners=num_learners
+            num_learners=num_learners,
+            n_jobs=n_jobs,
+            random_state=random_state
         )
         self.regression = True
 
@@ -311,7 +328,9 @@ class MultiTaskNAMClassifier(NAMClassifier):
         early_stop_mode: str = 'min',
         loss_func: Callable = None,
         metric: str = None,
-        num_learners: int = 1
+        num_learners: int = 1,
+        n_jobs: int = None,
+        random_state: int = 42
     ) -> None:
         super(MultiTaskNAMClassifier, self).__init__(
             units_multiplier=units_multiplier,
@@ -335,23 +354,26 @@ class MultiTaskNAMClassifier(NAMClassifier):
             early_stop_mode=early_stop_mode,
             loss_func=loss_func,
             metric=metric,
-            num_learners=num_learners
+            num_learners=num_learners,
+            n_jobs=n_jobs,
+            random_state=random_state
         )
         self.num_subnets = num_subnets
 
     def _initialize_models(self, X, y):
         self.num_inputs = X.shape[1]
         self.num_tasks = y.shape[1] if len(y.shape) > 1 else 1
-        self.models = [
-            MultiTaskNAM(num_inputs=X.shape[1],
+        self.models = []
+        for _ in range(self.num_learners):
+            model = MultiTaskNAM(num_inputs=X.shape[1],
                 num_units=get_num_units(self.units_multiplier, self.num_basis_functions, X),
                 num_subnets=self.num_subnets,
                 num_tasks=y.shape[1],
                 dropout=self.dropout,
                 feature_dropout=self.feature_dropout,
                 hidden_sizes=self.hidden_sizes)
-            for _ in range(self.num_learners)
-        ]
+            model.to(self.device)
+            self.models.append(model)
 
 
 class MultiTaskNAMRegressor(NAMRegressor):
@@ -379,7 +401,9 @@ class MultiTaskNAMRegressor(NAMRegressor):
         early_stop_mode: str = 'min',
         loss_func: Callable = None,
         metric: str = None,
-        num_learners: int = 1
+        num_learners: int = 1,
+        n_jobs: int = None,
+        random_state: int = 42
     ) -> None:
         super(MultiTaskNAMRegressor, self).__init__(
             units_multiplier=units_multiplier,
@@ -403,20 +427,23 @@ class MultiTaskNAMRegressor(NAMRegressor):
             early_stop_mode=early_stop_mode,
             loss_func=loss_func,
             metric=metric,
-            num_learners=num_learners
+            num_learners=num_learners,
+            n_jobs=n_jobs,
+            random_state=random_state
         )
         self.num_subnets = num_subnets
 
     def _initialize_models(self, X, y):
         self.num_inputs = X.shape[1]
         self.num_tasks = y.shape[1] if len(y.shape) > 1 else 1
-        self.models = [
-            MultiTaskNAM(num_inputs=X.shape[1],
+        self.models = []
+        for _ in range(self.num_learners):
+            model = MultiTaskNAM(num_inputs=X.shape[1],
                 num_units=get_num_units(self.units_multiplier, self.num_basis_functions, X),
                 num_subnets=self.num_subnets,
                 num_tasks=y.shape[1],
                 dropout=self.dropout,
                 feature_dropout=self.feature_dropout,
                 hidden_sizes=self.hidden_sizes)
-            for _ in range(self.num_learners)
-        ]
+            model.to(self.device)
+            self.models.append(model)

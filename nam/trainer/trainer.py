@@ -1,4 +1,5 @@
 import gc
+from joblib import Parallel, delayed
 import os
 from re import T
 from types import SimpleNamespace
@@ -11,6 +12,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from tqdm.autonotebook import tqdm
+from nam import models
 
 from nam.models.saver import Checkpointer
 from nam.trainer.metrics import *
@@ -41,9 +43,10 @@ class Trainer:
         early_stop_mode: str = 'min',
         regression: bool = True,
         num_learners: int = 1,
+        n_jobs: int = None,
         random_state: int = 0
     ) -> None:
-        self.models = [model.to(device) for model in models]
+        self.models = models
         self.dataset = dataset
         self.criterion = criterion
         self.metric_name = metric.upper() if metric else None
@@ -59,6 +62,7 @@ class Trainer:
         self.early_stop_mode = early_stop_mode
         self.regression = regression
         self.num_learners = num_learners
+        self.n_jobs = n_jobs
         self.random_state = random_state
 
         self.log_dir = log_dir
@@ -171,40 +175,46 @@ class Trainer:
             ss = StratifiedShuffleSplit(n_splits=self.num_learners, 
                 test_size=self.val_split, random_state=self.random_state)
 
-        # TODO: Add parallelism for cpu
-        for i, (train_ind, val_ind) in enumerate(ss.split(self.dataset.X, self.dataset.y)):
-            train_subset = Subset(self.dataset, train_ind)
-            val_subset = Subset(self.dataset, val_ind)
-            
-            train_dl = DataLoader(train_subset, batch_size=self.batch_size, 
-                shuffle=True, num_workers=self.num_workers)
+        self.models[:] = Parallel(n_jobs=self.n_jobs)(
+            delayed(self.train_learner)(i, train_ind, val_ind)
+            for i, (train_ind, val_ind) in enumerate(ss.split(self.dataset.X, self.dataset.y)))
+        
+        return
 
-            val_dl = DataLoader(val_subset, batch_size=self.batch_size, 
-                shuffle=False, num_workers=self.num_workers)
+    def train_learner(self, model_index, train_indices, val_indices):
+        model = self.models[model_index]
+        train_subset = Subset(self.dataset, train_indices)
+        val_subset = Subset(self.dataset, val_indices)
+        
+        train_dl = DataLoader(train_subset, batch_size=self.batch_size, 
+            shuffle=True, num_workers=self.num_workers)
 
-            log_subdir = os.path.join(self.log_dir, str(i))
-            writer = TensorBoardLogger(log_dir=log_subdir)
-            checkpointer = Checkpointer(model=self.models[i], log_dir=log_subdir)
+        val_dl = DataLoader(val_subset, batch_size=self.batch_size, 
+            shuffle=False, num_workers=self.num_workers)
 
-            optimizer = torch.optim.Adam(self.models[i].parameters(),
-                                         lr=self.lr,
-                                         weight_decay=self.decay_rate)
-            
-            scheduler = torch.optim.lr_scheduler.StepLR(optimizer,
-                                                gamma=0.995,
-                                                step_size=1)
+        log_subdir = os.path.join(self.log_dir, str(model_index))
+        writer = TensorBoardLogger(log_dir=log_subdir)
+        checkpointer = Checkpointer(model=model, log_dir=log_subdir)
 
-            metric = self.create_metric()
+        optimizer = torch.optim.Adam(model.parameters(),
+                                        lr=self.lr,
+                                        weight_decay=self.decay_rate)
+        
+        scheduler = torch.optim.lr_scheduler.StepLR(optimizer,
+                                            gamma=0.995,
+                                            step_size=1)
 
-            self.train(i, train_dl, val_dl, optimizer, scheduler, writer, checkpointer, metric)
+        metric = self.create_metric()
 
-    def train(self, model_index, train_dl, val_dl, optimizer, scheduler, writer, checkpointer, metric):
+        model = self.train(model, train_dl, val_dl, optimizer, scheduler, writer, checkpointer, metric)
+        return model
+
+    def train(self, model, train_dl, val_dl, optimizer, scheduler, writer, checkpointer, metric):
         """Train the model for a specified number of epochs."""
         num_epochs = self.num_epochs
         best_loss_or_metric = float('inf')
         best_checkpoint = -1
         epochs_since_best = 0
-        model = self.models[model_index]
 
         with tqdm(range(num_epochs)) as pbar_epoch:
             for epoch in pbar_epoch:
@@ -248,8 +258,9 @@ class Trainer:
                 # Stop training if early stopping patience exceeded
                 epochs_since_best += 1
                 if self.patience > 0 and epochs_since_best > self.patience:
-                    self.models[model_index] = checkpointer.load(best_checkpoint)
-                    break
+                    return checkpointer.load(best_checkpoint)
+
+            return model
 
     def close(self):
         del self.dataset
