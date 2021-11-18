@@ -5,8 +5,6 @@ from types import SimpleNamespace
 from typing import Callable, Mapping
 from typing import Sequence
 
-from ignite.contrib.metrics import ROC_AUC
-from ignite.metrics import Accuracy
 from ignite.metrics.epoch_metric import EpochMetric
 from sklearn.model_selection import ShuffleSplit, StratifiedShuffleSplit
 import torch
@@ -15,6 +13,7 @@ import torch.optim as optim
 from tqdm.autonotebook import tqdm
 
 from nam.models.saver import Checkpointer
+from nam.trainer.metrics import *
 from nam.utils.loggers import TensorBoardLogger
 from torch.utils.data import DataLoader, Subset
 from torch.utils.data import random_split
@@ -258,20 +257,24 @@ class Trainer:
         return
     
     def create_metric(self):
+        if not self.metric_name:
+            return None
         if self.metric_name.lower() == 'auroc':
-            # return ROC_AUC(lambda p: (torch.sigmoid(p[0]), p[1]))
-            return ROC_AUC()
-        # TODO: Come up with a wrapper scheme to handle necessary data
-        # transformations for different metrics, e.g. convert predictions
-        # to 1's and 0's for accuracy.
+            return AUROC()
         if self.metric_name.lower() == 'accuracy':
-            return Accuracy(lambda p: ((p[0] > 0).type(torch.int32), p[1]))
-        
-        return None
+            return Accuracy(input_type='logits')
+        if self.metric_name.lower() == 'avgprecision':
+            return AveragePrecision()
+        if self.metric_name.lower() == 'mse':
+            return MeanSquaredError()
+        if self.metric_name.lower() == 'rmse':
+            return RootMeanSquaredError()
+        if self.metric_name.lower() == 'mae':
+            return MeanAbsoluteError()
 
     def update_metric(self, metric, predictions, targets, weights):
         if metric:
             predictions, targets = predictions.view(-1), targets.view(-1)
             indices = weights.view(-1) > 0
             predictions, targets = predictions[indices], targets[indices]
-            metric.update((predictions, targets))
+            metric.update(predictions, targets)

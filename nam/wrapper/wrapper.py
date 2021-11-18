@@ -92,6 +92,7 @@ class NAMBase:
     def fit(self, X, y, w=None) -> None:
         self._set_random_state()
         self._initialize_models(X, y)
+        # self.preprocessor = MinMaxScaler(feature_range = (-1, 1) )
 
         dataset = NAMDataset(X, y, w)
 
@@ -159,7 +160,7 @@ class NAMBase:
         y = np.mean(feature_outputs, axis=0)
         conf_int = self._get_confidence_interval(feature_outputs)
 
-        if self.num_tasks ==1:
+        if self.num_tasks == 1:
             y, conf_int = y.squeeze(1), conf_int.squeeze(1)
         
         return {'x': X[:, feature_index], 'y': y, 'conf_int': conf_int}

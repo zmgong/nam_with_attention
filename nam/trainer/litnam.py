@@ -3,8 +3,8 @@ import torch
 from torch import nn
 
 # from nam.trainer.losses import penalized_loss
-from nam.trainer.metrics import accuracy
-from nam.trainer.metrics import mae
+# from nam.trainer.metrics import accuracy
+# from nam.trainer.metrics import mae
 from nam.types import Config
 
 
