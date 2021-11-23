@@ -5,6 +5,7 @@ import numpy as np
 from numpy.typing import ArrayLike
 import scipy
 from sklearn.exceptions import NotFittedError
+from sklearn.preprocessing import MinMaxScaler
 import torch
 
 from nam.data import NAMDataset
@@ -39,6 +40,7 @@ class NAMBase:
         metric: str = None,
         num_learners: int = 1,
         n_jobs: int = None,
+        warm_start: bool = False,
         random_state: int = 42
     ) -> None:
         self.units_multiplier = units_multiplier
@@ -64,6 +66,7 @@ class NAMBase:
         self.metric = metric
         self.num_learners = num_learners
         self.n_jobs = n_jobs
+        self.warm_start = warm_start
         self.random_state = random_state
 
         self._fitted = False
@@ -83,20 +86,30 @@ class NAMBase:
                 dropout=self.dropout,
                 feature_dropout=self.feature_dropout,
                 hidden_sizes=self.hidden_sizes)
-            model.to(self.device)
             self.models.append(model)
-        
+
         return
 
-    def partial_fit(self):
-        # TODO: Implement for warm start. Ask Rich about warm start + ensembling.
-        pass
+    def _models_to_device(self, device):
+        for model in self.models:
+            model.to(device)
 
-    def fit(self, X, y, w=None) -> None:
+        return
+
+    def fit(self, X, y, w=None):
         self._set_random_state()
-        self._initialize_models(X, y)
-        # self.preprocessor = MinMaxScaler(feature_range = (-1, 1) )
+        if not self.warm_start or not self._fitted:
+            self._initialize_models(X, y)
 
+        self.partial_fit(X, y)
+        return self
+
+    def partial_fit(self, X, y, w=None) -> None:
+        self._models_to_device(self.device)
+        
+        # self._preprocessor = MinMaxScaler(feature_range = (-1, 1))
+
+        # dataset = NAMDataset(self._preprocessor.fit_transform(X), y, w)
         dataset = NAMDataset(X, y, w)
 
         self.criterion = make_penalized_loss_func(self.loss_func, 
@@ -130,16 +143,17 @@ class NAMBase:
         self.trainer.close()
 
         # Move models to cpu so predictions can be made on cpu data
-        for model in self.models:
-            model.to('cpu')
+        self._models_to_device('cpu')
 
         self._fitted = True
+        return self
 
     def predict(self, X) -> ArrayLike:
         if not self._fitted:
             raise NotFittedError('''This NAM instance is not fitted yet. Call \'fit\' 
                 with appropriate arguments before using this method.''')
-        
+
+        # X = self._preprocessor.transform(X)
         prediction = np.zeros((X.shape[0],))
         if self.num_tasks > 1:
             prediction = np.zeros((X.shape[0], self.num_tasks))
@@ -171,6 +185,8 @@ class NAMBase:
 
         if self.num_tasks == 1:
             y, conf_int = y.squeeze(1), conf_int.squeeze(1)
+
+        # X = self._preprocessor.inverse_transform(X)
         
         return {'x': X[:, feature_index], 'y': y, 'conf_int': conf_int}
 
@@ -208,6 +224,7 @@ class NAMClassifier(NAMBase):
         metric: str = None,
         num_learners: int = 1,
         n_jobs: int = None,
+        warm_start: bool = False,
         random_state: int = 42
     ) -> None:
         super(NAMClassifier, self).__init__(
@@ -234,6 +251,7 @@ class NAMClassifier(NAMBase):
             metric=metric,
             num_learners=num_learners,
             n_jobs=n_jobs,
+            warm_start = warm_start,
             random_state=random_state
         )
         self.regression = False
@@ -272,6 +290,7 @@ class NAMRegressor(NAMBase):
         metric: str = None,
         num_learners: int = 1,
         n_jobs: int = None,
+        warm_start: bool = False,
         random_state: int = 42
     ) -> None:
         super(NAMRegressor, self).__init__(
@@ -298,6 +317,7 @@ class NAMRegressor(NAMBase):
             metric=metric,
             num_learners=num_learners,
             n_jobs=n_jobs,
+            warm_start = warm_start,
             random_state=random_state
         )
         self.regression = True
@@ -330,6 +350,7 @@ class MultiTaskNAMClassifier(NAMClassifier):
         metric: str = None,
         num_learners: int = 1,
         n_jobs: int = None,
+        warm_start: bool = False,
         random_state: int = 42
     ) -> None:
         super(MultiTaskNAMClassifier, self).__init__(
@@ -356,6 +377,7 @@ class MultiTaskNAMClassifier(NAMClassifier):
             metric=metric,
             num_learners=num_learners,
             n_jobs=n_jobs,
+            warm_start = warm_start,
             random_state=random_state
         )
         self.num_subnets = num_subnets
@@ -403,6 +425,7 @@ class MultiTaskNAMRegressor(NAMRegressor):
         metric: str = None,
         num_learners: int = 1,
         n_jobs: int = None,
+        warm_start: bool = False,
         random_state: int = 42
     ) -> None:
         super(MultiTaskNAMRegressor, self).__init__(
@@ -429,6 +452,7 @@ class MultiTaskNAMRegressor(NAMRegressor):
             metric=metric,
             num_learners=num_learners,
             n_jobs=n_jobs,
+            warm_start = warm_start,
             random_state=random_state
         )
         self.num_subnets = num_subnets
