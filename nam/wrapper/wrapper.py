@@ -154,6 +154,7 @@ class NAMBase:
                 with appropriate arguments before using this method.''')
 
         # X = self._preprocessor.transform(X)
+        
         prediction = np.zeros((X.shape[0],))
         if self.num_tasks > 1:
             prediction = np.zeros((X.shape[0], self.num_tasks))
@@ -180,22 +181,12 @@ class NAMBase:
         # (learners, examples, tasks)
         feature_outputs = np.stack(feature_outputs, axis=0)
         # (examples, tasks)
-        y = np.mean(feature_outputs, axis=0)
-        conf_int = self._get_confidence_interval(feature_outputs)
-
-        if self.num_tasks == 1:
-            y, conf_int = y.squeeze(1), conf_int.squeeze(1)
+        y = np.mean(feature_outputs, axis=0).squeeze()
+        conf_int = np.std(feature_outputs, axis=0).squeeze()
 
         # X = self._preprocessor.inverse_transform(X)
         
         return {'x': X[:, feature_index], 'y': y, 'conf_int': conf_int}
-
-    @staticmethod
-    def _get_confidence_interval(data, axis=0, confidence=0.95):
-        n = len(data)
-        se = scipy.stats.sem(data, axis=axis)
-        h = se * scipy.stats.t.ppf((1 + confidence) / 2., n-1)
-        return h
 
 
 class NAMClassifier(NAMBase):
