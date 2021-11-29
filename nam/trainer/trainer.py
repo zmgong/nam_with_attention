@@ -213,7 +213,8 @@ class Trainer:
         """Train the model for a specified number of epochs."""
         num_epochs = self.num_epochs
         best_loss_or_metric = float('inf')
-        best_checkpoint = -1
+        # best_checkpoint = -1
+        best_checkpoint_name = 'best'
         epochs_since_best = 0
 
         with tqdm(range(num_epochs)) as pbar_epoch:
@@ -252,14 +253,16 @@ class Trainer:
                 if self.patience > 0 and loss_or_metric < best_loss_or_metric:
                     best_loss_or_metric = loss_or_metric
                     epochs_since_best = 0
-                    checkpointer.save(epoch)
-                    best_checkpoint = epoch
+                    checkpointer.save(best_checkpoint_name)
+                    # best_checkpoint = epoch
 
                 # Stop training if early stopping patience exceeded
                 epochs_since_best += 1
                 if self.patience > 0 and epochs_since_best > self.patience:
-                    return checkpointer.load(best_checkpoint)
+                    return checkpointer.load(best_checkpoint_name)
 
+            # If early stopping is not used, save last checkpoint as best
+            checkpointer.save(best_checkpoint_name)
             return model
 
     def close(self):

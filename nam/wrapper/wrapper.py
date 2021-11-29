@@ -1,3 +1,4 @@
+import os
 import random
 from typing import Callable
 
@@ -11,6 +12,7 @@ import torch
 from nam.data import NAMDataset
 from nam.models import NAM, MultiTaskNAM
 from nam.models import get_num_units
+from nam.models.saver import Checkpointer
 from nam.trainer import Trainer
 from nam.trainer.losses import make_penalized_loss_func
 
@@ -69,6 +71,7 @@ class NAMBase:
         self.warm_start = warm_start
         self.random_state = random_state
 
+        self._best_checkpoint_name = 'best'
         self._fitted = False
 
     def _set_random_state(self):
@@ -80,6 +83,7 @@ class NAMBase:
     def _initialize_models(self, X, y):
         self.num_tasks = y.shape[1] if len(y.shape) > 1 else 1
         self.num_inputs = X.shape[1]
+        self.models = []
         for _ in range(self.num_learners):
             model = NAM(num_inputs=self.num_inputs,
                 num_units=get_num_units(self.units_multiplier, self.num_basis_functions, X),
@@ -187,6 +191,18 @@ class NAMBase:
         # X = self._preprocessor.inverse_transform(X)
         
         return {'x': X[:, feature_index], 'y': y, 'conf_int': conf_int}
+
+    def load_checkpoints(self, checkpoint_dir, X, y):
+        if not self.models:
+            self._initialize_models(X, y)
+
+        for i in range(self.num_learners):
+            checkpointer = Checkpointer(self.models[i], os.path.join(checkpoint_dir, str(i)))
+            checkpointer.load(self._best_checkpoint_name)
+            self.models[i].eval()
+
+        self._fitted = True
+        return
 
 
 class NAMClassifier(NAMBase):
