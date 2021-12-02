@@ -15,13 +15,10 @@ setup(
     packages=find_packages(),
     install_requires=[
         "torch",
-        "pytorch-lightning",
-        "wandb",
         "matplotlib",
         "sklearn",
         "numpy",
         "pandas",
-        "loguru",
     ],
     classifiers=[
         "Programming Language :: Python :: 3.6",

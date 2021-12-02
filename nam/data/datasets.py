@@ -8,7 +8,6 @@ from sklearn.preprocessing import OneHotEncoder
 
 from nam.config import defaults
 from nam.data.base import NAMDatasetOld
-from nam.data.folded import FoldedDataset
 
 cfg = defaults()
 

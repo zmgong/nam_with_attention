@@ -158,7 +158,7 @@ class NAMBase:
                 with appropriate arguments before using this method.''')
 
         # X = self._preprocessor.transform(X)
-        
+        X = torch.tensor(X, requires_grad=False, dtype=torch.float)
         prediction = np.zeros((X.shape[0],))
         if self.num_tasks > 1:
             prediction = np.zeros((X.shape[0], self.num_tasks))

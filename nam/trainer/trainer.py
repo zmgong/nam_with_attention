@@ -2,18 +2,16 @@ import gc
 from joblib import Parallel, delayed
 import os
 from re import T
-from types import SimpleNamespace
 from typing import Callable, Mapping
 from typing import Sequence
 
-from ignite.metrics.epoch_metric import EpochMetric
 from sklearn.model_selection import ShuffleSplit, StratifiedShuffleSplit
 import torch
 import torch.nn as nn
 import torch.optim as optim
 from tqdm.autonotebook import tqdm
-from nam import models
 
+from nam.trainer.metrics import Metric
 from nam.models.saver import Checkpointer
 from nam.trainer.metrics import *
 from nam.utils.loggers import TensorBoardLogger
@@ -94,7 +92,7 @@ class Trainer:
                 shuffle=False, num_workers=self.num_workers)
 
     def train_step(self, batch: torch.Tensor, model: nn.Module, 
-                   optimizer: optim.Optimizer, metric: EpochMetric) -> torch.Tensor:
+                   optimizer: optim.Optimizer, metric: Metric) -> torch.Tensor:
         """Performs a single gradient-descent optimization step."""
         features, targets, weights = [t.to(self.device) for t in batch]
 
@@ -116,7 +114,7 @@ class Trainer:
         return loss
 
     def train_epoch(self, model: nn.Module, optimizer: optim.Optimizer,
-                    dataloader: torch.utils.data.DataLoader, metric: EpochMetric) -> torch.Tensor:
+                    dataloader: torch.utils.data.DataLoader, metric: Metric) -> torch.Tensor:
         """Performs an epoch of gradient descent optimization on
         `dataloader`."""
         model.train()
@@ -135,7 +133,7 @@ class Trainer:
         return loss / len(dataloader), metric_train
 
     def evaluate_step(self, model: nn.Module, batch: Mapping[str, torch.Tensor],
-                      metric: EpochMetric) -> torch.Tensor:
+                      metric: Metric) -> torch.Tensor:
         """Evaluates `model` on a `batch`."""
         features, targets, weights = [t.to(self.device) for t in batch]
 
@@ -149,7 +147,7 @@ class Trainer:
         return loss
 
     def evaluate_epoch(self, model: nn.Module, dataloader: torch.utils.data.DataLoader,
-                       metric: EpochMetric) -> torch.Tensor:
+                       metric: Metric) -> torch.Tensor:
         """Performs an evaluation of the `model` on the `dataloader`."""
         model.eval()
         loss = 0.0
