@@ -18,8 +18,20 @@ class NAMDataset(torch.utils.data.Dataset):
             y (Union[ArrayLike, pd.DataFrame]): Target array.
             w (Union[ArrayLike, pd.DataFrame]): Weight array.
         """
+        if isinstance(X, pd.DataFrame):
+            X = X.to_numpy()
+        if isinstance(y, (pd.DataFrame, pd.Series)):
+            y = y.to_numpy()
+            
         self.X = torch.tensor(X, requires_grad=False, dtype=torch.float)
         self.y = torch.tensor(y, requires_grad=False, dtype=torch.float)
+        
+        if len(self.y.shape) > 1:
+            # In multitask setting, set missing labels to 0. The loss
+            # contributions from these examples will get zeroed out downstream
+            # but nan values will cause a crash.
+            self.y[self.y != self.y] = 0.0
+
         if not w:
             self.w = torch.clone(self.y)
             self.w[~torch.isnan(self.w)] = 1.0

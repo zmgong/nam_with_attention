@@ -4,6 +4,7 @@ from typing import Callable
 
 import numpy as np
 from numpy.typing import ArrayLike
+import pandas as pd
 import scipy
 from sklearn.exceptions import NotFittedError
 from sklearn.preprocessing import MinMaxScaler
@@ -71,7 +72,7 @@ class NAMBase:
         self.warm_start = warm_start
         self.random_state = random_state
 
-        self._best_checkpoint_name = 'best'
+        self._best_checkpoint_suffix = 'best'
         self._fitted = False
 
     def _set_random_state(self):
@@ -157,16 +158,20 @@ class NAMBase:
             raise NotFittedError('''This NAM instance is not fitted yet. Call \'fit\' 
                 with appropriate arguments before using this method.''')
 
+        if isinstance(X, pd.DataFrame):
+            X = X.to_numpy()
         # X = self._preprocessor.transform(X)
         X = torch.tensor(X, requires_grad=False, dtype=torch.float)
-        prediction = np.zeros((X.shape[0],))
+        predictions = np.zeros((X.shape[0],))
         if self.num_tasks > 1:
-            prediction = np.zeros((X.shape[0], self.num_tasks))
+            predictions = np.zeros((X.shape[0], self.num_tasks))
 
         for model in self.models:
             preds, _ = model.forward(X)
-            prediction += preds.detach().cpu().numpy()
-        return prediction / self.num_learners
+            predictions += preds.detach().cpu().numpy()
+
+        # predictions = self._preprocessor.inverse_transform(predictions)
+        return predictions / self.num_learners
 
     def plot(self, feature_index) -> None:
         num_samples = 1000
@@ -187,6 +192,7 @@ class NAMBase:
         # (examples, tasks)
         y = np.mean(feature_outputs, axis=0).squeeze()
         conf_int = np.std(feature_outputs, axis=0).squeeze()
+        # TODO: Scale conf_int according to units of y
 
         # X = self._preprocessor.inverse_transform(X)
         
@@ -198,7 +204,7 @@ class NAMBase:
 
         for i in range(self.num_learners):
             checkpointer = Checkpointer(self.models[i], os.path.join(checkpoint_dir, str(i)))
-            checkpointer.load(self._best_checkpoint_name)
+            checkpointer.load(self._best_checkpoint_suffix)
             self.models[i].eval()
 
         self._fitted = True

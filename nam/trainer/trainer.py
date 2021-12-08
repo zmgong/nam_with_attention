@@ -70,6 +70,8 @@ class Trainer:
         self.val_split = val_split
         self.test_split = test_split
 
+        self._best_checkpoint_suffix = 'best'
+
         self.setup_dataloaders()
         
     def setup_dataloaders(self):
@@ -211,8 +213,6 @@ class Trainer:
         """Train the model for a specified number of epochs."""
         num_epochs = self.num_epochs
         best_loss_or_metric = float('inf')
-        # best_checkpoint = -1
-        best_checkpoint_name = 'best'
         epochs_since_best = 0
 
         with tqdm(range(num_epochs)) as pbar_epoch:
@@ -251,16 +251,15 @@ class Trainer:
                 if self.patience > 0 and loss_or_metric < best_loss_or_metric:
                     best_loss_or_metric = loss_or_metric
                     epochs_since_best = 0
-                    checkpointer.save(best_checkpoint_name)
-                    # best_checkpoint = epoch
+                    checkpointer.save(self._best_checkpoint_suffix)
 
                 # Stop training if early stopping patience exceeded
                 epochs_since_best += 1
                 if self.patience > 0 and epochs_since_best > self.patience:
-                    return checkpointer.load(best_checkpoint_name)
+                    return checkpointer.load(self._best_checkpoint_suffix)
 
             # If early stopping is not used, save last checkpoint as best
-            checkpointer.save(best_checkpoint_name)
+            checkpointer.save(self._best_checkpoint_suffix)
             return model
 
     def close(self):
