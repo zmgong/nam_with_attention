@@ -269,6 +269,11 @@ class NAMClassifier(NAMBase):
         )
         self.regression = False
 
+    def fit(self, X, y, w=None):
+        if len(np.unique(y)) > 2:
+            raise ValueError('More than two unique y-values detected. Multiclass classification not currently supported.')
+        return super().fit(X, y, w)
+
     def predict_proba(self, X) -> ArrayLike:
         out = scipy.special.expit(super().predict(X))
         return out
