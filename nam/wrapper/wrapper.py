@@ -102,6 +102,13 @@ class NAMBase:
         return
 
     def fit(self, X, y, w=None):
+        if isinstance(X, pd.DataFrame):
+            X = X.to_numpy()
+        if isinstance(y, (pd.DataFrame, pd.Series)):
+            y = y.to_numpy()
+        if isinstance(y, (pd.DataFrame, pd.Series)):
+            w = w.to_numpy()
+
         self._set_random_state()
         if not self.warm_start or not self._fitted:
             self._initialize_models(X, y)
@@ -270,7 +277,14 @@ class NAMClassifier(NAMBase):
         self.regression = False
 
     def fit(self, X, y, w=None):
-        if len(np.unique(y)) > 2:
+        if isinstance(X, pd.DataFrame):
+            X = X.to_numpy()
+        if isinstance(y, (pd.DataFrame, pd.Series)):
+            y = y.to_numpy()
+        if isinstance(y, (pd.DataFrame, pd.Series)):
+            w = w.to_numpy()
+            
+        if len(np.unique(y[~np.isnan(y)])) > 2:
             raise ValueError('More than two unique y-values detected. Multiclass classification not currently supported.')
         return super().fit(X, y, w)
 

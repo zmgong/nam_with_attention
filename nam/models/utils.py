@@ -3,14 +3,8 @@ from typing import List, Union
 import numpy as np
 from numpy.typing import ArrayLike
 import pandas as pd
-import torch
 import torch.nn as nn
 
-
-def init_weights(m):
-    if type(m) == nn.Linear:
-        torch.nn.init.kaiming_normal_(m.weight)
-        m.bias.data.fill_(0.01)
 
 def get_num_units(
     units_multiplier: int,

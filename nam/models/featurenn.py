@@ -2,8 +2,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from nam.models.base import Model
-
 from .activation import ExU
 from .activation import LinReLU
 
