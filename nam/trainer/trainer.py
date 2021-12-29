@@ -194,7 +194,7 @@ class Trainer:
 
         log_subdir = os.path.join(self.log_dir, str(model_index))
         writer = TensorBoardLogger(log_dir=log_subdir)
-        checkpointer = Checkpointer(model=model, log_dir=log_subdir)
+        checkpointer = Checkpointer(log_dir=log_subdir)
 
         optimizer = torch.optim.Adam(model.parameters(),
                                         lr=self.lr,
@@ -241,7 +241,7 @@ class Trainer:
 
                 # Checkpoints model weights.
                 if self.save_model_frequency > 0 and epoch % self.save_model_frequency == 0:
-                    checkpointer.save(epoch)
+                    checkpointer.save(model, epoch)
 
                 # Save best checkpoint for early stopping
                 loss_or_metric = loss_val if self.monitor_loss else metric_val
@@ -251,7 +251,7 @@ class Trainer:
                 if self.patience > 0 and loss_or_metric < best_loss_or_metric:
                     best_loss_or_metric = loss_or_metric
                     epochs_since_best = 0
-                    checkpointer.save(self._best_checkpoint_suffix)
+                    checkpointer.save(model, self._best_checkpoint_suffix)
 
                 # Stop training if early stopping patience exceeded
                 epochs_since_best += 1
@@ -259,7 +259,7 @@ class Trainer:
                     return checkpointer.load(self._best_checkpoint_suffix)
 
             # If early stopping is not used, save last checkpoint as best
-            checkpointer.save(self._best_checkpoint_suffix)
+            checkpointer.save(model, self._best_checkpoint_suffix)
             return model
 
     def close(self):

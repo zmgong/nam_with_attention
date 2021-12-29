@@ -198,14 +198,14 @@ class NAMBase:
         
         return {'x': X[:, feature_index], 'y': y, 'conf_int': conf_int}
 
-    def load_checkpoints(self, checkpoint_dir, X, y):
-        if not self.models:
-            self._initialize_models(X, y)
-
+    def load_checkpoints(self, checkpoint_dir):
+        self.models = []
         for i in range(self.num_learners):
-            checkpointer = Checkpointer(self.models[i], os.path.join(checkpoint_dir, str(i)))
-            checkpointer.load(self._best_checkpoint_suffix)
-            self.models[i].eval()
+            checkpointer = Checkpointer(os.path.join(checkpoint_dir, str(i)))
+            model = checkpointer.load(self._best_checkpoint_suffix)
+            model.eval()
+            self.num_tasks = 1 if isinstance(model, NAM) else model.num_tasks
+            self.models.append(model)
 
         self._fitted = True
         return
