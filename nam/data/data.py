@@ -25,12 +25,6 @@ class NAMDataset(torch.utils.data.Dataset):
             
         self.X = torch.tensor(X, requires_grad=False, dtype=torch.float)
         self.y = torch.tensor(y, requires_grad=False, dtype=torch.float)
-        
-        if len(self.y.shape) > 1:
-            # In multitask setting, set missing labels to 0. The loss
-            # contributions from these examples will get zeroed out downstream
-            # but nan values will cause a crash.
-            self.y[self.y != self.y] = 0.0
 
         if not w:
             self.w = torch.clone(self.y)
@@ -38,6 +32,12 @@ class NAMDataset(torch.utils.data.Dataset):
             self.w[torch.isnan(self.w)] = 0.0
         else:
             self.w = torch.tensor(w, requires_grad=False, dtype=torch.float)
+
+        if len(self.y.shape) > 1:
+            # In multitask setting, set missing labels to 0. The loss
+            # contributions from these examples will get zeroed out downstream
+            # but leaving nan values will cause a crash.
+            self.y[self.y != self.y] = 0.0
 
     def __len__(self):
         return len(self.X)
