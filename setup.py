@@ -5,23 +5,25 @@ with open("README.md", "r") as f:
     long_description = f.read()
 
 setup(
-    name='nam',
-    version='0.0.2',
-    description="Neural Additive Models (Google Research)",
+    name='nam-interpret',
+    version='0.0.0',
+    description="Neural Additive Models for InterpretML",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    author="Amr Kayid",
-    url="https://github.com/AmrMKayid/nam",
+    author="InterpretML Team",
+    url="https://github.com/lemeln/nam",
     packages=find_packages(),
     install_requires=[
         "torch",
-        "matplotlib",
         "sklearn",
         "numpy",
         "pandas",
+        "loguru",
+        "tensorboard",
+        "tqdm"
     ],
     classifiers=[
-        "Programming Language :: Python :: 3.6",
+        "Programming Language :: Python :: 3.7",
         "License :: OSI Approved :: MIT License",
         "Operating System :: OS Independent",
     ],
