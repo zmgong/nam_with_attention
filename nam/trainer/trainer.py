@@ -61,6 +61,8 @@ class Trainer:
         self.num_learners = num_learners
         self.n_jobs = n_jobs
         self.random_state = random_state
+        # Disable tqdm if concurrency > 1
+        self.disable_tqdm = n_jobs not in (None, 1)
 
         self.log_dir = log_dir
         if not self.log_dir:
@@ -120,7 +122,7 @@ class Trainer:
         `dataloader`."""
         model.train()
         loss = 0.0
-        with tqdm(dataloader, leave=False) as pbar:
+        with tqdm(dataloader, leave=False, disable=self.disable_tqdm) as pbar:
             for batch in pbar:
                 # Performs a gradient-descent step.
                 step_loss = self.train_step(batch, model, optimizer, metric)
@@ -152,7 +154,7 @@ class Trainer:
         """Performs an evaluation of the `model` on the `dataloader`."""
         model.eval()
         loss = 0.0
-        with tqdm(dataloader, leave=False) as pbar:
+        with tqdm(dataloader, leave=False, disable=self.disable_tqdm) as pbar:
             for batch in pbar:
                 # Accumulates loss in dataset.
                 with torch.no_grad():
@@ -214,7 +216,7 @@ class Trainer:
         best_loss_or_metric = float('inf')
         epochs_since_best = 0
 
-        with tqdm(range(num_epochs)) as pbar_epoch:
+        with tqdm(range(num_epochs), disable=self.disable_tqdm) as pbar_epoch:
             for epoch in pbar_epoch:
                 # Trains model on whole training dataset, and writes on `TensorBoard`.
                 loss_train, metric_train = self.train_epoch(model, optimizer, train_dl, metric)
