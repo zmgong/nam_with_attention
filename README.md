@@ -1,7 +1,5 @@
 # Neural Additive Models for InterpretML
 
-| **[Paper](https://proceedings.neurips.cc/paper/2021/file/251bd0442dfcc53b5a761e050f8022b8-Paper.pdf)**
-
 ![PyPI Python Version](https://img.shields.io/pypi/pyversions/nam)
 ![GitHub license](https://img.shields.io/github/license/lemeln/nam)
 
