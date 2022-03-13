@@ -32,7 +32,7 @@ See '''classification.ipynb''' and '''regression.ipynb''' for more detail.
 
 ## Acknowledgements
 
-This repo, which was created by Levi Melnick, forks AmrMKayid/nam, which is maintained by Amr Kayid and Nicholas Frosst. Much of the code has been significantly rewritten to be included in InterpretML, but Kayid and Frosst's work provided an excellent starting point.
+This repo, which was created by Levi Melnick, forks AmrMKayid/nam, which is maintained by Amr Kayid and Nicholas Frosst. The code extends and builds on top of their PyTorch implementation.
 
 ```bibtex
 @article{agarwal2021neural,
