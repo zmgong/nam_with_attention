@@ -183,6 +183,9 @@ class Trainer:
         return
 
     def train_learner(self, model_index, train_indices, val_indices):
+        # Set random seed for each process to guarantee reproducibility
+        torch.manual_seed(self.random_state + model_index)
+
         model = self.models[model_index]
         train_subset = Subset(self.dataset, train_indices)
         val_subset = Subset(self.dataset, val_indices)
