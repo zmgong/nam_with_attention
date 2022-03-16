@@ -13,6 +13,7 @@ Please see https://github.com/google-research/google-research/tree/master/neural
 
 ```python
 from nam.wrapper import NAMClassifier
+import sklearn.metrics as sk_metrics
 
 model = NAMClassifier(
             num_epochs=1000,
@@ -28,7 +29,7 @@ model.fit(X_train, y_train)
 pred = model.predict_proba(X_test)
 sk_metrics.roc_auc_score(y_test, pred)
 ```
-See '''classification.ipynb''' and '''regression.ipynb''' for more detail.
+See '''classification.ipynb''' and '''regression.ipynb''' for more details.
 
 ## Acknowledgements
 
