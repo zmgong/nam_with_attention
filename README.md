@@ -29,7 +29,7 @@ model.fit(X_train, y_train)
 pred = model.predict_proba(X_test)
 sk_metrics.roc_auc_score(y_test, pred)
 ```
-See '''classification.ipynb''' and '''regression.ipynb''' for more details.
+See '''examples.ipynb''' for more details.
 
 ## Acknowledgements
 
