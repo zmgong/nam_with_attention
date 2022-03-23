@@ -32,7 +32,7 @@ class NAMBase:
         val_split: float = 0.15,
         device: str = 'cpu',
         lr: float = 0.02082,
-        decay_rate: float = 0.0,
+        decay_rate: float = 0.995,
         output_reg: float = 0.2078,
         l2_reg: float = 0.0,
         save_model_frequency: int = 10,
