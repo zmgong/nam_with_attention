@@ -176,7 +176,7 @@ class Trainer:
             ss = StratifiedShuffleSplit(n_splits=self.num_learners, 
                 test_size=self.val_split, random_state=self.random_state)
 
-        self.models[:] = Parallel(n_jobs=self.n_jobs)(
+        self.models[:] = Parallel(n_jobs=self.n_jobs, prefer="threads")(
             delayed(self.train_learner)(i, train_ind, val_ind)
             for i, (train_ind, val_ind) in enumerate(ss.split(self.dataset.X, self.dataset.y)))
         

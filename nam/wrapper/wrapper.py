@@ -112,7 +112,7 @@ class NAMBase:
         self._set_random_state()
         if not self.warm_start or not self._fitted:
             self._initialize_models(X, y)
-
+        print("Format converting and model initializing are done.")
         self.partial_fit(X, y)
         return self
 
