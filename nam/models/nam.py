@@ -38,8 +38,8 @@ class NAM(torch.nn.Module):
             for i in range(num_inputs)
         ])
 
-        self.multihead_attn_before = nn.MultiheadAttention(num_inputs + 1, 1)
-        self.multihead_attn_after = nn.MultiheadAttention(num_inputs + 1, 1)
+        self.multihead_attn_before = nn.MultiheadAttention(num_inputs + 1, 1, batch_first=True)
+        self.multihead_attn_after = nn.MultiheadAttention(num_inputs + 1, 1, batch_first=True)
 
         self._bias = torch.nn.Parameter(data=torch.zeros(1))
 
@@ -62,39 +62,17 @@ class NAM(torch.nn.Module):
 
     def forward(self, inputs: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         # query_before = self.query_proj_before(inputs)
-        att_before_flag = False
+        att_before_flag = True
         if att_before_flag:
             inputs = self.attention_forward(inputs, self.multihead_attn_before)
-
-            # inputs = torch.unsqueeze(inputs, -1)
-            # index_emb = torch.zeros((inputs.shape[1], inputs.shape[1]))
-            # for index, row in enumerate(index_emb):
-            #     row[index] = 1
-            # index_emb = torch.reshape(index_emb.repeat(inputs.shape[0], 1),
-            #                           (inputs.shape[0], inputs.shape[1], inputs.shape[1]))
-            # inputs = torch.cat((index_emb, inputs), dim=-1)
-            #
-            # attn_output, attn_output_weights = self.multihead_attn_before(inputs, inputs, inputs)
-            # inputs = attn_output[:, :, -1]
 
         individual_outputs = self.calc_outputs(inputs)
         conc_out = torch.cat(individual_outputs, dim=-1)
         dropout_out = self.dropout_layer(conc_out)
 
-        att_after_flag = True
+        att_after_flag = False
         if att_after_flag:
             dropout_out = self.attention_forward(dropout_out, self.multihead_attn_after)
-
-            # inputs = torch.unsqueeze(dropout_out, -1)
-            # index_emb = torch.zeros((inputs.shape[1], inputs.shape[1]))
-            # for index, row in enumerate(index_emb):
-            #     row[index] = 1
-            # index_emb = torch.reshape(index_emb.repeat(inputs.shape[0], 1),
-            #                           (inputs.shape[0], inputs.shape[1], inputs.shape[1]))
-            # inputs = torch.cat((index_emb, inputs), dim=-1)
-            #
-            # attn_output, attn_output_weights = self.multihead_attn_before(inputs, inputs, inputs)
-            # dropout_out = attn_output[:, :, -1]
         out = torch.sum(dropout_out, dim=-1)
         return out + self._bias, dropout_out
 
