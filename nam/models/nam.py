@@ -66,7 +66,6 @@ class NAM(torch.nn.Module):
         att_after_flag = False
         if att_after_flag:
             dropout_out = self.attention_forward(dropout_out, self.multihead_attn_after)
-
         out = torch.sum(dropout_out, dim=-1)
         return out + self._bias, dropout_out
 
