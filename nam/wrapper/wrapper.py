@@ -90,7 +90,8 @@ class NAMBase:
                 num_units=get_num_units(self.units_multiplier, self.num_basis_functions, X),
                 dropout=self.dropout,
                 feature_dropout=self.feature_dropout,
-                hidden_sizes=self.hidden_sizes)
+                hidden_sizes=self.hidden_sizes,
+                embed_dim=X.shape[2])
             self.models.append(model)
 
         return
@@ -169,12 +170,14 @@ class NAMBase:
             X = X.to_numpy()
         # X = self._preprocessor.transform(X)
         X = torch.tensor(X, requires_grad=False, dtype=torch.float)
-        predictions = np.zeros((X.shape[0],))
+        predictions = np.zeros((X.shape[0],1))
         if self.num_tasks > 1:
             predictions = np.zeros((X.shape[0], self.num_tasks))
 
         for model in self.models:
             preds, _ = model.forward(X)
+            # print(preds.shape)
+            # print(predictions.shape)
             predictions += preds.detach().cpu().numpy()
 
         # predictions = self._preprocessor.inverse_transform(predictions)

@@ -62,7 +62,8 @@ class Trainer:
         self.n_jobs = n_jobs
         self.random_state = random_state
         # Disable tqdm if concurrency > 1
-        self.disable_tqdm = n_jobs not in (None, 1)
+        # self.disable_tqdm = n_jobs not in (None, 1)
+        self.disable_tqdm = False
 
         self.log_dir = log_dir
         if not self.log_dir:
