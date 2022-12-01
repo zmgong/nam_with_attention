@@ -62,8 +62,8 @@ class Trainer:
         self.n_jobs = n_jobs
         self.random_state = random_state
         # Disable tqdm if concurrency > 1
-        # self.disable_tqdm = n_jobs not in (None, 1)
-        self.disable_tqdm = False
+        self.disable_tqdm = n_jobs not in (None, 1)
+        # self.disable_tqdm = False
 
         self.log_dir = log_dir
         if not self.log_dir:
@@ -104,7 +104,7 @@ class Trainer:
         optimizer.zero_grad()
 
         # Forward pass from the model.
-        predictions, fnn_out = model(features)
+        predictions, fnn_out, _ = model(features)
 
         loss = self.criterion(predictions, targets, weights, fnn_out, model)
         self.update_metric(metric, predictions, targets, weights)
@@ -142,7 +142,7 @@ class Trainer:
         features, targets, weights = [t.to(self.device) for t in batch]
 
         # Forward pass from the model.
-        predictions, fnn_out = model(features)
+        predictions, fnn_out, _ = model(features)
 
         # Calculates loss on mini-batch.
         loss = self.criterion(predictions, targets, weights, fnn_out, model)
@@ -205,9 +205,11 @@ class Trainer:
                                         lr=self.lr,
                                         weight_decay=self.decay_rate)
         
-        scheduler = torch.optim.lr_scheduler.StepLR(optimizer,
-                                            gamma=0.995,
-                                            step_size=1)
+        # scheduler = torch.optim.lr_scheduler.StepLR(optimizer,
+        #                                     gamma=0.995,
+        #                                     step_size=1)
+
+        scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, max_lr=0.01, steps_per_epoch=5, epochs=self.num_epochs)
 
         metric = self.create_metric()
 
@@ -220,7 +222,7 @@ class Trainer:
         best_loss_or_metric = float('inf')
         epochs_since_best = 0
 
-        with tqdm(range(num_epochs), disable=self.disable_tqdm) as pbar_epoch:
+        with tqdm(range(num_epochs)) as pbar_epoch:
             for epoch in pbar_epoch:
                 # Trains model on whole training dataset, and writes on `TensorBoard`.
                 loss_train, metric_train = self.train_epoch(model, optimizer, train_dl, metric)

@@ -173,15 +173,16 @@ class NAMBase:
         predictions = np.zeros((X.shape[0],1))
         if self.num_tasks > 1:
             predictions = np.zeros((X.shape[0], self.num_tasks))
-
+        weight = None
+        att_weight = None
         for model in self.models:
-            preds, _ = model.forward(X)
+            preds, weight, att_weight = model.forward(X)
             # print(preds.shape)
             # print(predictions.shape)
             predictions += preds.detach().cpu().numpy()
 
         # predictions = self._preprocessor.inverse_transform(predictions)
-        return predictions / self.num_learners
+        return predictions / self.num_learners, weight, att_weight
 
     def plot(self, feature_index) -> None:
         num_samples = 1000
@@ -292,8 +293,9 @@ class NAMClassifier(NAMBase):
         return super().fit(X, y, w)
 
     def predict_proba(self, X) -> ArrayLike:
-        out = scipy.special.expit(super().predict(X))
-        return out
+        out, weight, att_weight = super().predict(X)
+        out = scipy.special.expit(out)
+        return out, weight, att_weight
 
     def predict(self, X) -> ArrayLike:
         return self.predict_proba(X).round()

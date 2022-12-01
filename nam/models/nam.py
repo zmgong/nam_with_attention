@@ -51,14 +51,15 @@ class NAM(torch.nn.Module):
 
     def attention_forward(self, inputs, att_module):    
         attn_output, attn_output_weights = att_module(inputs, inputs, inputs)
-        return attn_output
+        return attn_output, attn_output_weights
 
-    def forward(self, inputs: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    def forward(self, inputs: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         # query_before = self.query_proj_before(inputs)
         att_before_flag = True
+        attn_output_weights = None
         if att_before_flag:
-            inputs = self.attention_forward(inputs, self.multihead_attn_before)
-
+            inputs, attn_output_weights = self.attention_forward(inputs, self.multihead_attn_before)
+        feature_after_att = inputs
         individual_outputs = self.calc_outputs(inputs)
         conc_out = torch.cat(individual_outputs, dim=-1)
         dropout_out = self.dropout_layer(conc_out)
@@ -67,7 +68,8 @@ class NAM(torch.nn.Module):
         if att_after_flag:
             dropout_out = self.attention_forward(dropout_out, self.multihead_attn_after)
         out = torch.sum(dropout_out, dim=-1)
-        return out + self._bias, dropout_out
+
+        return out + self._bias, dropout_out, feature_after_att
 
 
 class MultiTaskNAM(torch.nn.Module):

@@ -3,6 +3,7 @@ from time import time
 import numpy as np
 import pandas as pd
 import sklearn.metrics as sk_metrics
+import torch
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.preprocessing import OneHotEncoder
@@ -26,6 +27,9 @@ def onehot_pos_embedding(x):
     return np.concatenate((x[:, :, np.newaxis], onehot), axis=2)
 
 if __name__ == '__main__':
+
+    pre_train_path = None
+
     random_state = 2016
     dataset = pd.read_csv('nam/data/recid.data', delimiter=' ', header=None)
     dataset.columns = ["age", "race", "sex", "priors_count", "length_of_stay", "c_charge_degree", "two_year_recid"]
@@ -54,42 +58,14 @@ if __name__ == '__main__':
     )
     
     model.fit(X_train, y_train)
-    
-    pred = model.predict_proba(X_test)
+
+
+    pred, weight, att_weight = model.predict_proba(X_test)
+
     e_time = time()
     print(sk_metrics.roc_auc_score(y_test, pred))
     print("Time cost: " + str(e_time - s_time))
 
-    # Multitask NAMs Classification
-    # y_train_mtl = make_gender_mtl_data(X_train, y_train)
-    # y_test_mtl = make_gender_mtl_data(X_test, y_test)
-
-    # X_train_mtl = X_train.drop(columns=['sex'])
-    # X_test_mtl = X_test.drop(columns=['sex'])
-    # s_time = time()
-    # model = MultiTaskNAMClassifier(
-    #     num_learners=20,
-    #     patience=60,
-    #     num_epochs=1000,
-    #     num_subnets=10,
-    #     metric='auroc',
-    #     monitor_loss=False,
-    #     early_stop_mode='max',
-    #     n_jobs=10,
-    #     random_state=random_state
-    # )
-    # model.fit(X_train_mtl, y_train_mtl)
-    # pred = model.predict_proba(X_test_mtl)
-    # e_time = time()
-    # # Flatten and remove nans
-    # y_test_mtl_flat = y_test_mtl.to_numpy().reshape(-1)
-    # pred_flat = pred.reshape(-1)
-
-    # non_nan_indices = y_test_mtl_flat == y_test_mtl_flat
-    # y_test_mtl_flat = y_test_mtl_flat[non_nan_indices]
-    # pred_flat = pred_flat[non_nan_indices]
-    # print(sk_metrics.roc_auc_score(y_test_mtl_flat, pred_flat))
-    # print("Time cost: " + str(e_time - s_time))
 
 
 
