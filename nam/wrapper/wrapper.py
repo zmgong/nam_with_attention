@@ -20,6 +20,7 @@ from nam.trainer.losses import make_penalized_loss_func
 class NAMBase:
     def __init__(
         self,
+        enable_att:bool = True,
         units_multiplier: int = 2,
         num_basis_functions: int = 64,
         hidden_sizes: list = [64, 32],
@@ -44,8 +45,11 @@ class NAMBase:
         num_learners: int = 1,
         n_jobs: int = None,
         warm_start: bool = False,
-        random_state: int = 42
+        random_state: int = 42,
+        pos_embed: int = None,
+        head_attention: int = None,
     ) -> None:
+        self.enable_att = enable_att
         self.units_multiplier = units_multiplier
         self.num_basis_functions = num_basis_functions
         self.hidden_sizes = hidden_sizes
@@ -74,6 +78,9 @@ class NAMBase:
 
         self._best_checkpoint_suffix = 'best'
         self._fitted = False
+        self.pos_embed = pos_embed
+        self.head_attention = head_attention
+
 
     def _set_random_state(self):
         random.seed(self.random_state)
@@ -85,13 +92,17 @@ class NAMBase:
         self.num_tasks = y.shape[1] if len(y.shape) > 1 else 1
         self.num_inputs = X.shape[1]
         self.models = []
+
         for _ in range(self.num_learners):
             model = NAM(num_inputs=self.num_inputs,
+                        enable_att=self.enable_att,
                 num_units=get_num_units(self.units_multiplier, self.num_basis_functions, X),
                 dropout=self.dropout,
                 feature_dropout=self.feature_dropout,
                 hidden_sizes=self.hidden_sizes,
-                embed_dim=X.shape[2])
+                embed_dim=X.shape[2],
+                pos_embed=self.pos_embed,
+                head_attention=self.head_attention)
             self.models.append(model)
 
         return
@@ -176,13 +187,13 @@ class NAMBase:
         weight = None
         att_weight = None
         for model in self.models:
-            preds, weight, att_weight = model.forward(X)
+            preds, weight, feature_after_att, attn_output_weights = model.forward(X)
             # print(preds.shape)
             # print(predictions.shape)
             predictions += preds.detach().cpu().numpy()
 
         # predictions = self._preprocessor.inverse_transform(predictions)
-        return predictions / self.num_learners, weight, att_weight
+        return predictions / self.num_learners, weight, feature_after_att, attn_output_weights
 
     def plot(self, feature_index) -> None:
         num_samples = 1000
@@ -225,6 +236,7 @@ class NAMBase:
 class NAMClassifier(NAMBase):
     def __init__(
         self,
+        enable_att:bool = True,
         units_multiplier: int = 2,
         num_basis_functions: int = 64,
         hidden_sizes: list = [64, 32],
@@ -249,9 +261,13 @@ class NAMClassifier(NAMBase):
         num_learners: int = 1,
         n_jobs: int = None,
         warm_start: bool = False,
-        random_state: int = 42
+        random_state: int = 42,
+        pos_embed: int = None,
+        head_attention: int = 1,
+
     ) -> None:
         super(NAMClassifier, self).__init__(
+            enable_att=enable_att,
             units_multiplier=units_multiplier,
             num_basis_functions=num_basis_functions,
             hidden_sizes=hidden_sizes,
@@ -276,7 +292,9 @@ class NAMClassifier(NAMBase):
             num_learners=num_learners,
             n_jobs=n_jobs,
             warm_start = warm_start,
-            random_state=random_state
+            random_state=random_state,
+            pos_embed = pos_embed,
+            head_attention=head_attention,
         )
         self.regression = False
 
@@ -293,9 +311,9 @@ class NAMClassifier(NAMBase):
         return super().fit(X, y, w)
 
     def predict_proba(self, X) -> ArrayLike:
-        out, weight, att_weight = super().predict(X)
+        out, weight, feature_after_att, attn_output_weights = super().predict(X)
         out = scipy.special.expit(out)
-        return out, weight, att_weight
+        return out, weight, feature_after_att, attn_output_weights
 
     def predict(self, X) -> ArrayLike:
         return self.predict_proba(X).round()

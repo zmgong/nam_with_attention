@@ -104,7 +104,7 @@ class Trainer:
         optimizer.zero_grad()
 
         # Forward pass from the model.
-        predictions, fnn_out, _ = model(features)
+        predictions, fnn_out, feature_after_att, attn_output_weights = model(features)
 
         loss = self.criterion(predictions, targets, weights, fnn_out, model)
         self.update_metric(metric, predictions, targets, weights)
@@ -142,7 +142,7 @@ class Trainer:
         features, targets, weights = [t.to(self.device) for t in batch]
 
         # Forward pass from the model.
-        predictions, fnn_out, _ = model(features)
+        predictions, fnn_out, _, _ = model(features)
 
         # Calculates loss on mini-batch.
         loss = self.criterion(predictions, targets, weights, fnn_out, model)

@@ -9,6 +9,7 @@ from sklearn.preprocessing import OneHotEncoder
 from torchvision.datasets import MNIST, FashionMNIST, CIFAR10
 
 from nam.wrapper import NAMClassifier, MultiTaskNAMClassifier
+from CIFAR10_test import cood_encoding
 import random
 
 
@@ -26,19 +27,7 @@ def filterClasses(X, y, classes: list):
     return X, y
 
 
-def cood_encoding(x):
-    x = x / 255
-    indices = np.zeros((x.shape[1], x.shape[2], 2))
-    for i in range(x.shape[1]):
-        for j in range(x.shape[2]):
-            indices[i, j] = [i, j]
-    indices = np.repeat(indices[np.newaxis, :, :, :], x.shape[0], axis=0)
-    print(x.shape, indices.shape)
-    return np.concatenate((x, indices), axis=3).reshape(x.shape[0], x.shape[1] * x.shape[2], x.shape[3] + 2)
-    # return x.reshape(x.shape[0], x.shape[1] * x.shape[2], 1)
-
-
-def single_training(X_train, X_test, y_train, y_test, cfg, epoch=40):
+def single_training(X_train, X_test, y_train, y_test, cfg, epoch=40, random_seed=42):
     s_time = time()
     model = NAMClassifier(
         num_epochs=epoch,
@@ -49,16 +38,17 @@ def single_training(X_train, X_test, y_train, y_test, cfg, epoch=40):
         early_stop_mode='max',
         monitor_loss=False,
         n_jobs=10,
-        random_state=random_state,
+        random_state=random_seed,
         device='cuda:0',
         dropout=cfg["drop_out"],
         feature_dropout=cfg["feature_dropout"],
+        pos_embed=3,
     )
     print(X_train.shape)
     print(y_train.shape)
     model.fit(X_train, y_train)
 
-    pred, _, _ = model.predict_proba(X_test)
+    pred, _, _, _ = model.predict_proba(X_test)
 
     # print(pred)
     print("----------")
@@ -73,7 +63,7 @@ def single_training(X_train, X_test, y_train, y_test, cfg, epoch=40):
 
 
 if __name__ == '__main__':
-    random_state = 2016
+    random_state = 42
     dataset = CIFAR10(root='nam/data/', download=True, train=True)
     # X_data = dataset.data.numpy()
     # y_data = dataset.targets.numpy().reshape(-1, 1)
@@ -93,7 +83,7 @@ if __name__ == '__main__':
     print(X_train.shape, X_test.shape)
     best_score = 0
     best_cfg = None
-    for seed in range(25):
+    for seed in range(30):
         print("Current seed: " + str(seed))
         random.seed(seed)
         random_config = {
@@ -102,7 +92,7 @@ if __name__ == '__main__':
             "feature_dropout": random.uniform(0.1, 0.001),
             "batchs_size": random.choice([64, 128, 256])
         }
-        score = single_training(X_train, X_test, y_train, y_test, random_config, 40)
+        score = single_training(X_train, X_test, y_train, y_test, random_config, epoch=40)
         if score > best_score:
             best_score = score
             best_cfg = random_config
@@ -111,6 +101,6 @@ if __name__ == '__main__':
             print()
     print("Best score is: " + str(best_score))
     print(best_cfg)
-    score = single_training(X_train, X_test, y_train, y_test, best_cfg, 320)
+    score = single_training(X_train, X_test, y_train, y_test, best_cfg, epoch=320)
     print("Final score is: " + str(score))
     print(best_cfg)

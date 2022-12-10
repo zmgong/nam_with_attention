@@ -42,26 +42,30 @@ def single_training(X_train, X_test, y_train, y_test):
     model = NAMClassifier(
         num_epochs=40,
         num_learners=1,
-        lr=0.00121378010955352,
-        batch_size=256,
+        lr=0.007539419328703001,
+        batch_size=64,
         metric='auroc',
         early_stop_mode='max',
         monitor_loss=False,
         n_jobs=10,
         random_state=random_state,
         device='cuda:0',
-        dropout=0.00608802797867547,
-        feature_dropout=0.011649098939190652,
+        dropout=0.03215945869651085,
+        feature_dropout=0.03227589011640504,
+        pos_embed=2,
+        head_attention=3,
+
     )
     print(X_train.shape)
     print(y_train.shape)
     model.fit(X_train, y_train)
 
-    pred, feature, feature_after_att = model.predict_proba(X_test)
+    pred, feature, feature_after_att, attn_output_weights = model.predict_proba(X_test)
 
     e_time = time()
     print(sk_metrics.roc_auc_score(y_test, pred))
     print("Time cost: " + str(e_time - s_time))
+
 
 
 
